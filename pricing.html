@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>TaxPlot — Pricing</title>
+<meta name="description" content="TaxPlot: a free receipt-tracking app for individuals, and a CA-workspace tool for firms. See how both are priced.">
+<meta name="theme-color" content="#00657E">
+<link rel="icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wght@400..800&family=Mukta:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Marketing-page-only layout. Colors/fonts/components (--brand, .btn,
+     .card, .chip) come from style.css so this stays the same visual
+     identity as the app, not a second design language. */
+  body.mkt{ min-height:100vh; }
+  .mkt-wrap{ max-width:960px; margin:0 auto; padding:0 20px 64px; }
+  .mkt-nav{ display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1.1rem 20px; max-width:960px; margin:0 auto; flex-wrap:wrap; }
+  .mkt-nav .logo{ display:flex; align-items:center; gap:.6rem; font-family:var(--f-display); font-weight:700; font-size:1.2rem; text-decoration:none; color:var(--ink); }
+  .mkt-nav .mark{ width:2rem; height:2rem; border-radius:8px; background:var(--brand); color:var(--on-brand); display:grid; place-items:center; font-weight:700; }
+  .mkt-nav .links{ display:flex; gap:1.25rem; flex-wrap:wrap; }
+  .mkt-nav a.navlink{ color:var(--mute); text-decoration:none; font-size:.92rem; font-weight:600; padding:.5rem .25rem; }
+  .mkt-nav a.navlink:hover{ color:var(--ink); }
+  .mkt-nav a.navlink[aria-current="page"]{ color:var(--brand); }
+
+  .mkt-hero{ padding:2.5rem 0 1.5rem; text-align:center; }
+  .mkt-hero h1{ font-family:var(--f-display); font-size:clamp(1.8rem,4.5vw,2.6rem); line-height:1.15; margin:0 0 .75rem; }
+  .mkt-hero p{ color:var(--mute); font-size:1.05rem; max-width:40rem; margin:0 auto; line-height:1.55; }
+  .mkt-hero .eyebrow{ font-family:var(--f-num); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); font-weight:700; margin-bottom:.6rem; display:block; }
+
+  .mkt-section{ padding:2.25rem 0; border-top:1px solid var(--line); }
+  .mkt-section>h2{ font-family:var(--f-display); font-size:1.5rem; margin:0 0 .4rem; }
+  .mkt-section>p.lede{ color:var(--mute); margin:0 0 1.5rem; max-width:44rem; line-height:1.55; }
+
+  /* Free consumer app callout */
+  .mkt-free{ display:flex; gap:1.25rem; align-items:center; flex-wrap:wrap; }
+  .mkt-free .txt{ flex:1; min-width:16rem; }
+  .mkt-free .price{ font-family:var(--f-num); font-size:2rem; font-weight:700; color:var(--brand); }
+
+  /* Pricing tier cards */
+  .mkt-tiers{ display:grid; grid-template-columns:repeat(auto-fit,minmax(15.5rem,1fr)); gap:1rem; align-items:stretch; }
+  .mkt-tier{ display:flex; flex-direction:column; gap:1rem; position:relative; }
+  .mkt-tier.popular{ border-color:var(--brand); box-shadow:0 0 0 2px var(--brand-soft); }
+  .mkt-tier .badge{ position:absolute; top:-.7rem; left:1.1rem; background:var(--brand); color:var(--on-brand); font-size:.72rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:.25rem .6rem; border-radius:999px; }
+  .mkt-tier h3{ font-family:var(--f-display); font-size:1.2rem; margin:.3rem 0 0; }
+  .mkt-tier .for{ color:var(--mute); font-size:.85rem; }
+  .mkt-tier .price-line{ font-family:var(--f-num); font-size:1.05rem; font-weight:600; color:var(--ink); padding:.6rem 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+  .mkt-tier .price-line small{ display:block; font-weight:400; color:var(--mute); font-size:.78rem; margin-top:.15rem; font-family:var(--f-body); }
+  .mkt-tier ul{ list-style:none; margin:0; padding:0; display:grid; gap:.55rem; flex:1; }
+  .mkt-tier ul li{ display:flex; gap:.5rem; align-items:flex-start; font-size:.9rem; line-height:1.4; }
+  .mkt-tier ul li svg{ flex:none; margin-top:.15rem; color:var(--brand); width:1.1em; height:1.1em; }
+  .mkt-tier .btn{ width:100%; }
+  .mkt-tier .btn.ghost{ box-shadow:inset 0 0 0 1px var(--line); }
+
+  .mkt-features{ display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); gap:1.1rem; }
+  .mkt-feat h4{ font-family:var(--f-body); font-weight:600; font-size:.98rem; margin:0 0 .35rem; display:flex; gap:.5rem; align-items:center; }
+  .mkt-feat h4 svg{ color:var(--brand); width:1.2em; height:1.2em; flex:none; }
+  .mkt-feat p{ color:var(--mute); font-size:.87rem; margin:0; line-height:1.5; }
+
+  .mkt-isnt ul{ list-style:none; margin:0; padding:0; display:grid; gap:.6rem; }
+  .mkt-isnt li{ font-size:.92rem; line-height:1.5; color:var(--ink); }
+  .mkt-isnt li b{ color:var(--ink); }
+
+  .mkt-faq details{ border-bottom:1px solid var(--line); padding:.9rem 0; }
+  .mkt-faq details:first-of-type{ border-top:1px solid var(--line); }
+  .mkt-faq summary{ cursor:pointer; font-weight:600; font-size:.98rem; list-style:none; display:flex; justify-content:space-between; gap:1rem; align-items:center; }
+  .mkt-faq summary::-webkit-details-marker{ display:none; }
+  .mkt-faq summary::after{ content:"+"; font-size:1.3rem; color:var(--mute); flex:none; }
+  .mkt-faq details[open] summary::after{ content:"\2212"; }
+  .mkt-faq p{ color:var(--mute); font-size:.9rem; line-height:1.6; margin:.6rem 0 0; }
+
+  .mkt-cta{ text-align:center; padding:2.5rem 0; }
+  .mkt-cta .btn{ padding:.85rem 1.6rem; font-size:1rem; }
+  .mkt-cta .note{ color:var(--mute); font-size:.85rem; margin-top:.9rem; max-width:34rem; margin-inline:auto; line-height:1.5; }
+
+  .mkt-foot{ border-top:1px solid var(--line); padding:1.5rem 20px; text-align:center; color:var(--mute); font-size:.8rem; max-width:960px; margin:0 auto; line-height:1.6; }
+</style>
+</head>
+<body class="mkt">
+
+<nav class="mkt-nav" aria-label="TaxPlot">
+  <a class="logo" href="./index.html"><span class="mark">T</span>TaxPlot</a>
+  <div class="links">
+    <a class="navlink" href="./index.html">Consumer app</a>
+    <a class="navlink" href="./ca.html">CA workspace</a>
+    <a class="navlink" href="./pricing.html" aria-current="page">Pricing</a>
+  </div>
+</nav>
+
+<main class="mkt-wrap">
+
+  <section class="mkt-hero">
+    <span class="eyebrow">Pricing</span>
+    <h1>Free for individuals. Simple, flat pricing for CA firms.</h1>
+    <p>Clients photograph receipts all year, tagged to a deduction section automatically. Firms see a document-readiness dashboard built from that habit — nothing to chase every March.</p>
+  </section>
+
+  <section class="mkt-section">
+    <h2>For individuals</h2>
+    <p class="lede">The consumer app — always free, no account required to start.</p>
+    <div class="card mkt-free">
+      <div class="txt">
+        <h3 style="margin-bottom:.35rem;">TaxPlot</h3>
+        <p style="color:var(--mute); margin:0; font-size:.92rem;">Photograph receipts through the year, track your running deduction progress, compare old vs. new tax regime, and export a year-end report. No cost, no catch — this is the product, not a loss-leading trial.</p>
+      </div>
+      <div style="text-align:right;">
+        <div class="price">₹0</div>
+        <a class="btn" href="./index.html" style="margin-top:.6rem; display:inline-flex;">Try it now</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="mkt-section">
+    <h2>For CA firms</h2>
+    <p class="lede">
+      Flat subscription, by firm size — never per-client, and never a share
+      of your fees. The three tiers and what each includes are settled;
+      <strong>the exact ₹ figures are still being finalized</strong> with
+      early firms before they're quoted anywhere, so you won't see a number
+      below yet — that's intentional, not a placeholder we forgot to fill in.
+    </p>
+    <div class="mkt-tiers">
+
+      <div class="card mkt-tier">
+        <h3>Starter</h3>
+        <div class="for">Solo &amp; 2–3 partner firms</div>
+        <div class="price-line">Pricing finalizing<small>Flat subscription · up to 50 active clients</small></div>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Readiness score per client</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Review queue with automated first-pass checks</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Bulk document requests</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Per-client deduction export (Excel + PDF)</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Single seat</li>
+        </ul>
+        <a class="btn ghost" href="#waitlist">Join the interest list</a>
+      </div>
+
+      <div class="card mkt-tier popular">
+        <span class="badge">Most firms this size</span>
+        <h3>Growth</h3>
+        <div class="for">3–10 partner firms</div>
+        <div class="price-line">Pricing finalizing<small>Flat subscription · higher client-capacity block</small></div>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Everything in Starter</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Multi-seat roles — partner / preparer / reviewer</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Review audit trail (who approved/queried/rejected, and when)</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Higher active-client capacity block</li>
+        </ul>
+        <a class="btn ghost" href="#waitlist">Join the interest list</a>
+      </div>
+
+      <div class="card mkt-tier">
+        <h3>Practice</h3>
+        <div class="for">10+ partner firms</div>
+        <div class="price-line">Custom<small>Flat subscription · pursued after pilot references</small></div>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Everything in Growth</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Custom seat count</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg> Security/DPDP answers prepared for procurement review</li>
+        </ul>
+        <a class="btn ghost" href="#waitlist">Talk to us first</a>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="mkt-section mkt-features">
+
+    <div style="grid-column:1/-1;">
+      <h2 style="font-size:1.35rem;">What's in the CA workspace</h2>
+      <p class="lede" style="margin-bottom:1rem;">Same across every tier — tiers differ by firm size and seats, not by feature gating.</p>
+    </div>
+
+    <div class="mkt-feat">
+      <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Readiness score</h4>
+      <p>Per client, built from intake answers: what's logged, what's still missing — Form 130, AIS, rent receipts + landlord PAN, Section 126 certificates, home-loan certificate, NPS statement.</p>
+    </div>
+    <div class="mkt-feat">
+      <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg>Bulk requests</h4>
+      <p>"All clients missing X" generates a pre-filled message, so your team isn't chasing one person at a time.</p>
+    </div>
+    <div class="mkt-feat">
+      <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.8 2.8 19.5h18.4z"/><path d="M12 10v4.2M12 16.9v.2"/></svg>Automated first-pass checks</h4>
+      <p>Dates outside the FY, cash-payment limits on Section 126/133, missing landlord PAN, likely duplicates — flagged before your team reviews, not after.</p>
+    </div>
+    <div class="mkt-feat">
+      <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9l3 3v13H6z"/><path d="M9 11h6M9 15h6"/></svg>Export</h4>
+      <p>Per-client deduction schedule (Excel + PDF) in the e-filing portal's field order, plus the receipts register, aimed at your existing filing workflow.</p>
+    </div>
+
+  </section>
+
+  <section class="mkt-section mkt-isnt">
+    <h2>What it isn't</h2>
+    <ul>
+      <li><b>Not an e-filer.</b> No ERI registration, no portal submission — your firm remains the one that reviews and files.</li>
+      <li><b>Not tax advice.</b> Every figure shown to a client is labelled an estimate.</li>
+      <li><b>Not a fee-share or referral arrangement.</b> TaxPlot never takes a percentage of your fees or a per-client commission, and never sells firms as leads. It's a tool, priced as a tool.</li>
+      <li><b>Not a replacement for your practice-management software.</b> It's the layer before it, so cleaner data reaches it.</li>
+    </ul>
+  </section>
+
+  <section class="mkt-section mkt-faq">
+    <h2>Questions firms ask us</h2>
+
+    <details>
+      <summary>When can my firm actually start?</summary>
+      <p>The CA-workspace backend (the consent flow that lets a client securely share receipts with your firm) is in active development and isn't live yet. Joining the interest list below means we'll contact you the moment a working pilot exists — not before.</p>
+    </details>
+
+    <details>
+      <summary>How is client data protected, and who can see it?</summary>
+      <p>A client explicitly consents before anything is shared — naming your firm, the purpose, and the financial year. Your firm never holds a separate copy of a client's data: access is granted directly on the client's own record while consent is live, and disappears immediately if they withdraw it, enforced at the database level, not by application logic. The client can see exactly who's accessed their data and when.</p>
+    </details>
+
+    <details>
+      <summary>Do you take a cut of my fees, or sell client leads?</summary>
+      <p>No. ICAI's own rules (First Schedule Part I) rule out fee-sharing, per-client commissions, and lead-selling to CAs — and we wouldn't want to build that model regardless. Pricing is a flat subscription by firm size, full stop.</p>
+    </details>
+
+    <details>
+      <summary>Can I cancel, and what happens to my data if I do?</summary>
+      <p>Nothing locks you in — a flat subscription, cancel when you like. Because your firm never held a separate copy of client data in the first place, there's nothing left over to delete on your side either.</p>
+    </details>
+
+    <details>
+      <summary>Does this replace Winman, Saral, CompuTax, or Gen?</summary>
+      <p>No — TaxPlot sits before those tools, not instead of them. It's where a client's year-round receipts become a ready-to-review queue; your existing return-prep software still does the filing.</p>
+    </details>
+
+  </section>
+
+  <section class="mkt-cta" id="waitlist">
+    <h2 style="font-family:var(--f-display); font-size:1.4rem; margin:0 0 .75rem;">Want your firm first in line?</h2>
+    <p class="note">
+      Firm sign-ups aren't open yet — the consent backend above is still
+      being built, and we'd rather tell you that plainly than collect your
+      details before there's anything real to show you. Check back here,
+      or try the free consumer app today so your own receipts are already
+      organized by the time your firm can connect to it.
+    </p>
+    <a class="btn" href="./index.html" style="margin-top:1.1rem; display:inline-flex;">Try the free app instead</a>
+  </section>
+
+</main>
+
+<footer class="mkt-foot">
+  Informational tool — not tax advice. Figures shown in the app are estimates; final tax positions are confirmed by your own review and filing. CA-workspace pricing above is indicative and subject to change before general availability.
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,103 @@
+{
+  "_meta": {
+    "note": "Task 4b (docs/NEXT_STEPS_2026-10.md) -- plain-language definitions for the 'Tax words' library. English only for now: translating this accurately into Hindi/Hinglish needs a Hindi speaker, and the rest of the app has no Hindi locale yet either (see locales/i18n.js). Definitions stay general on purpose -- never 'you should choose X'. A practising CA should review this file after each Budget, same as every // VERIFY figure in tax-engine.js.",
+    "reviewedBy": null,
+    "reviewedOn": null
+  },
+  "regime": {
+    "term": "Tax regime",
+    "plain": "The set of tax slabs and rules you're taxed under this year — new or old. Salaried employees can pick either one, most years.",
+    "example": "The new regime has lower rates but very few deductions; the old regime has higher rates but lets you claim 123 (80C), 126 (80D) and more.",
+    "whereYouSeeIt": "Payslip, Form 124 (12BB), ITR",
+    "section": { "new": "202", "old": "—" },
+    "appliesTo": "both"
+  },
+  "deduction": {
+    "term": "Deduction",
+    "plain": "An amount subtracted from your income before tax is worked out — it lowers the income tax is charged on, not your tax bill directly.",
+    "example": "₹50,000 put into PPF is a Section 123 (80C) deduction — it reduces your taxable income by ₹50,000, not your final tax by ₹50,000.",
+    "whereYouSeeIt": "Form 124 (12BB), ITR",
+    "section": { "new": "—", "old": "123, 124, 126, 22, 133…" },
+    "appliesTo": "old"
+  },
+  "exemption": {
+    "term": "Exemption",
+    "plain": "A part of your salary that's tax-free outright, before any deduction is even applied — most commonly HRA.",
+    "example": "If ₹8,000 a month of your HRA is exempt, that ₹8,000 never counts as taxable income in the first place.",
+    "whereYouSeeIt": "Payslip, Form 130 (16)",
+    "section": { "new": "—", "old": "HRA rules" },
+    "appliesTo": "old"
+  },
+  "cap": {
+    "term": "Cap",
+    "plain": "The maximum amount a deduction counts for. Spending more than the cap doesn't lower your tax any further.",
+    "example": "Section 124 (80CCD(1B)) has its own ₹50,000 cap, separate from Section 123's cap — one doesn't borrow room from the other.",
+    "whereYouSeeIt": "Deduction trackers, ITR",
+    "section": { "new": "—", "old": "varies by section" },
+    "appliesTo": "old"
+  },
+  "rebate87a": {
+    "term": "87A rebate",
+    "plain": "A rule that wipes out your entire tax bill if your taxable income is below a set threshold — a full waiver, not just a deduction.",
+    "example": "No tax at all if your taxable income is up to {{newRebateThreshold}} on the new regime, or {{oldRebateThreshold}} on the old regime.",
+    "whereYouSeeIt": "ITR, tax computation",
+    "section": { "new": "87A", "old": "87A" },
+    "appliesTo": "both"
+  },
+  "tds": {
+    "term": "TDS",
+    "plain": "Tax Deducted at Source — tax your employer or bank cuts from a payment before it reaches you, and deposits with the government on your behalf.",
+    "example": "Your employer deducts TDS from every month's salary based on your estimated annual tax.",
+    "whereYouSeeIt": "Payslip, Form 168 (26AS), Form 130 (16)",
+    "section": { "new": "393", "old": "192, 194 series" },
+    "appliesTo": "both"
+  },
+  "form130": {
+    "term": "Form 130",
+    "plain": "Your salary tax certificate from your employer — formerly Form 16. It summarises your salary, TDS and deductions for the year.",
+    "example": "You'll need Form 130 to file your return, and to check your TDS matches what's on Form 168 (26AS).",
+    "whereYouSeeIt": "Given by your employer; used when filing",
+    "section": { "new": "Form 130", "old": "Form 16" },
+    "appliesTo": "both"
+  },
+  "ais": {
+    "term": "AIS",
+    "plain": "The Annual Information Statement — the tax department's own record of your income, from every source it already knows about.",
+    "example": "Checking AIS against what you've logged here helps catch anything you forgot, or anything the department has wrong.",
+    "whereYouSeeIt": "Income tax e-filing portal",
+    "section": { "new": "Form 168", "old": "Form 26AS / AIS" },
+    "appliesTo": "both"
+  },
+  "hra": {
+    "term": "HRA",
+    "plain": "House Rent Allowance — the part of your salary meant to cover rent. Some of it can be tax-exempt if you actually pay rent.",
+    "example": "The tax-free portion depends on your rent, your salary, and whether your city is in the higher-exemption tier.",
+    "whereYouSeeIt": "Payslip, Form 124 (12BB)",
+    "section": { "new": "—", "old": "HRA exemption rules" },
+    "appliesTo": "old"
+  },
+  "pan": {
+    "term": "PAN",
+    "plain": "Permanent Account Number — your 10-character tax ID. Your landlord's PAN is needed too, once your rent crosses a threshold.",
+    "example": "Landlord PAN is required when your annual rent is above {{landlordPanThreshold}}.",
+    "whereYouSeeIt": "Everywhere — ITR, Form 130, rent receipts",
+    "section": { "new": "—", "old": "—" },
+    "appliesTo": "both"
+  },
+  "itr": {
+    "term": "ITR",
+    "plain": "Income Tax Return — the form you file each year reporting your income, deductions and tax paid.",
+    "example": "Most salaried people without business income file ITR-1 or ITR-2.",
+    "whereYouSeeIt": "Filed on the income tax e-filing portal",
+    "section": { "new": "—", "old": "—" },
+    "appliesTo": "both"
+  },
+  "taxyear": {
+    "term": "Tax year",
+    "plain": "India's tax year runs 1 April to 31 March — not the same as the calendar year.",
+    "example": "{{fyLabel}} runs from {{fyStart}} to {{fyEnd}}.",
+    "whereYouSeeIt": "Everywhere in this app and on the e-filing portal",
+    "section": { "new": "—", "old": "—" },
+    "appliesTo": "both"
+  }
+}

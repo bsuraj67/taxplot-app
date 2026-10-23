@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>TaxPlot</title>
+<meta name="theme-color" content="#00657E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TaxPlot">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script>
+/* Apply saved appearance before first paint (no flash). Keys mirror SETTINGS in app.js. */
+(function(){try{var s=JSON.parse(localStorage.getItem("taxplot.settings")||"{}"),r=document.documentElement;
+if(s.theme==="light"||s.theme==="dark")r.dataset.theme=s.theme;
+if(s.text==="large")r.dataset.text="large";if(s.density==="compact")r.dataset.density="compact";
+if(s.motion==="reduce")r.dataset.motion="reduce";if(s.hideAmounts)r.dataset.hide="1";}catch(e){}})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wght@400..800&family=Mukta:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="flow" id="s-onboarding"><div class="container"></div></div>
+<div class="flow" id="s-permission" hidden><div class="container"></div></div>
+<div class="flow" id="s-quickconfirm" hidden><div class="container"></div></div>
+<div class="flow" id="s-camera" hidden><div class="cam-view"></div></div>
+<div class="flow" id="s-review" hidden><div class="container"></div></div>
+
+<div id="s-app" hidden>
+  <div class="shell">
+    <nav class="side" aria-label="Main">
+      <div class="logo"><span class="mark">T</span>TaxPlot</div>
+      <button class="nav-btn" type="button" data-view="overview"></button>
+      <button class="nav-btn" type="button" data-view="receipts"></button>
+      <button class="nav-btn" type="button" data-view="report"></button>
+      <button class="nav-btn" type="button" data-view="glossary"></button>
+      <button class="nav-btn" type="button" data-view="settings"></button>
+      <div class="side-foot" id="side-foot"></div>
+    </nav>
+    <main class="main" id="view" tabindex="-1"></main>
+  </div>
+  <nav class="tabbar" aria-label="Main (mobile)" id="tabbar"></nav>
+  <button class="snap-fab" type="button" id="snap-fab" data-act="goto-camera"></button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div class="glossary-sheet" id="glossary-sheet" hidden></div>
+
+<script src="tax-engine.js"></script>
+<script src="locales/i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

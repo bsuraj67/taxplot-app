@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en-IN" data-density="compact">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>TaxPlot for CAs</title>
+<meta name="theme-color" content="#00657E">
+<link rel="icon" href="apple-touch-icon.png">
+<script>
+(function(){try{var s=JSON.parse(localStorage.getItem("taxplot.ca.settings")||"{}"),r=document.documentElement;
+if(s.theme==="light"||s.theme==="dark")r.dataset.theme=s.theme;
+if(s.density==="comfortable")delete r.dataset.density;
+if(s.text==="large")r.dataset.text="large";}catch(e){}})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wght@400..800&family=Mukta:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="ca">
+<header class="top">
+  <div class="logo"><span class="mark">T</span>TaxPlot <small>for CAs</small></div>
+  <label class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+    <input id="q" type="search" placeholder="Search clients, PAN" aria-label="Search">
+    <kbd>/</kbd>
+  </label>
+  <select id="fy" aria-label="Financial year"></select>
+  <div class="sp">
+    <button class="tbtn" type="button" id="theme-quick" aria-label="Switch theme"></button>
+    <span class="avatar" title="Example CA user">RM</span>
+  </div>
+</header>
+
+<div class="work">
+  <nav class="rail" aria-label="Workspace" id="rail"></nav>
+  <div class="content" id="content"></div>
+</div>
+
+<footer class="statusbar" id="statusbar"></footer>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script src="tax-engine.js"></script>
+<script src="locales/i18n.js"></script>
+<script src="ca.js"></script>
+</body>
+</html>

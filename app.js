@@ -34,6 +34,7 @@ var SETTINGS_DEFAULTS = {
   deadlineDays: 45,
   quietHours: true,
   postFiling: { eVerified: false, refundReceived: false }, // task 7 post-filing tracker
+  dpdpNoticeSeen: false, // task 5: shown once before the first photo, see gotoCamera()
 };
 var SETTINGS = Object.assign({}, SETTINGS_DEFAULTS, (() => {
   try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch (e) { return {}; }
@@ -95,7 +96,10 @@ const CATEGORY_GROUPS = [
 
 // Mock "detected payment" seed data and mock receipt-extraction pool live in
 // tax-engine.js (TaxEngine.DEMO_DETECTED_SEED / TaxEngine.DEMO_MOCK_EXTRACTIONS)
-// so app.js never hardcodes a rupee amount.
+// so app.js never hardcodes a rupee amount. The mock extraction pool is only
+// used behind an explicit ?mock=1 URL flag (see isMockExtractionMode below) —
+// without it, a captured photo goes to Review with blank fields instead of
+// fake data, since there's no real extraction backend yet.
 // TODO(backend): replace the mock extraction pool with a real POST to your
 // extraction endpoint once the backend exists (see knowledge base §3).
 
@@ -131,6 +135,7 @@ var STATE = {
   glossaryQuery: "",
   familyMembers: [], // { id, name, relation: "Parent" | "Child" } -- task 7 family profiles
   toast: null,
+  dpdpNoticeOpen: false, // the data notice sheet, while open (task 5)
 };
 
 function daysLeftInFY() {
@@ -511,6 +516,27 @@ function qcEditOrSplit(id) {
 function gotoCamera() {
   STATE.camera = { phase: "idle", photo: null };
   show("s-camera");
+  // DPDP notice (task 5): shown once, before the very first photo -- the
+  // sheet's backdrop covers the whole screen, so the shutter/gallery
+  // buttons underneath aren't reachable until it's acknowledged.
+  STATE.dpdpNoticeOpen = !SETTINGS.dpdpNoticeSeen;
+  renderDpdpSheet();
+}
+function renderDpdpSheet() {
+  const sheetEl = el("dpdp-sheet");
+  if (!sheetEl) return;
+  if (!STATE.dpdpNoticeOpen) { sheetEl.hidden = true; sheetEl.innerHTML = ""; return; }
+  sheetEl.hidden = false;
+  sheetEl.innerHTML = `
+    <button type="button" class="sheet-backdrop" data-act="ack-dpdp-notice" aria-label="${t("dpdp.gotIt")}"></button>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="${t("dpdp.title")}">
+      <div class="cap-top"><h4>${t("dpdp.title")}</h4></div>
+      <p><strong>${t("dpdp.whatTitle")}</strong><br>${t("dpdp.what")}</p>
+      <p><strong>${t("dpdp.whyTitle")}</strong><br>${t("dpdp.why")}</p>
+      <p><strong>${t("dpdp.whereTitle")}</strong><br>${t("dpdp.where")}</p>
+      <p><strong>${t("dpdp.deleteTitle")}</strong><br>${t("dpdp.delete")}</p>
+      <button type="button" class="btn" data-act="ack-dpdp-notice">${t("dpdp.gotIt")}</button>
+    </div>`;
 }
 function paintCamera() {
   const cam = STATE.camera;
@@ -566,15 +592,28 @@ function onFileSelected(input) {
   reader.readAsDataURL(file);
 }
 function retakePhoto() { STATE.camera = { phase: "idle", photo: null }; paintCamera(); }
+// ?mock=1 makes the simulated extraction explicit and opt-in (for tests/demos),
+// instead of every photo silently getting fake data. See TODO(backend) above.
+function isMockExtractionMode() {
+  return new URLSearchParams(location.search).get("mock") === "1";
+}
 function usePhoto() {
   STATE.camera.phase = "loading";
   paintCamera();
   setTimeout(() => {
-    // Simulated extraction — see MOCK_EXTRACTIONS note above.
-    const success = Math.random() > 0.05;
-    if (!success) { STATE.camera.phase = "fallback"; paintCamera(); return; }
-    const pick = TaxEngine.DEMO_MOCK_EXTRACTIONS[Math.floor(Math.random() * TaxEngine.DEMO_MOCK_EXTRACTIONS.length)];
-    STATE.reviewDraft = { vendor: pick.vendor, date: new Date().toISOString().slice(0, 10), amount: pick.amount, category: pick.category, notes: "", photo: STATE.camera.photo, lowConfidence: pick.lowConfidence, landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
+    if (isMockExtractionMode()) {
+      // Simulated extraction, including an occasional simulated failure —
+      // ?mock=1 only, see MOCK_EXTRACTIONS note above.
+      const success = Math.random() > 0.05;
+      if (!success) { STATE.camera.phase = "fallback"; paintCamera(); return; }
+      const pick = TaxEngine.DEMO_MOCK_EXTRACTIONS[Math.floor(Math.random() * TaxEngine.DEMO_MOCK_EXTRACTIONS.length)];
+      STATE.reviewDraft = { vendor: pick.vendor, date: new Date().toISOString().slice(0, 10), amount: pick.amount, category: pick.category, notes: "", photo: STATE.camera.photo, lowConfidence: pick.lowConfidence, landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
+    } else {
+      // Honest default: no real extraction backend exists yet, so the photo
+      // is kept and the user fills in details themselves — same shape as
+      // manual entry, just with the photo attached.
+      STATE.reviewDraft = { vendor: "", date: new Date().toISOString().slice(0, 10), amount: "", category: "", notes: "", photo: STATE.camera.photo, lowConfidence: [], landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
+    }
     STATE.reviewDraftSource = "camera";
     show("s-review");
   }, 1100);
@@ -1435,7 +1474,7 @@ function resetDemo() {
     screen: "s-onboarding", appView: "overview", onboarding: freshOnboarding(), regime: null, income: null,
     autoDetectEnabled: false, receipts: [], pendingDetected: [], receiptFilter: "all", reviewDraft: null,
     reviewDraftSource: null, camera: { phase: "idle", photo: null }, confirmDelete: false, confirmRegimeOptOut: false,
-    glossaryOpen: null, glossaryQuery: "", familyMembers: [], toast: null,
+    glossaryOpen: null, glossaryQuery: "", familyMembers: [], toast: null, dpdpNoticeOpen: false,
   };
   show("s-onboarding");
   showToast(t("settings.toastDemoReset"));
@@ -1485,6 +1524,7 @@ document.addEventListener("click", (e) => {
   if (act === "open-glossary") { STATE.glossaryOpen = a.dataset.value; renderGlossarySheet(); }
   if (act === "close-glossary") { STATE.glossaryOpen = null; renderGlossarySheet(); }
   if (act === "read-aloud") speakGlossary(a.dataset.value);
+  if (act === "ack-dpdp-notice") { SETTINGS.dpdpNoticeSeen = true; saveSettings(); STATE.dpdpNoticeOpen = false; renderDpdpSheet(); }
   if (act === "del-yes") {
     STATE.confirmDelete = false;
     try { localStorage.removeItem(SETTINGS_KEY); } catch (err) {}

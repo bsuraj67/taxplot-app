@@ -86,6 +86,18 @@
       "fallbackSub": "Want to retake, or enter the details yourself?",
       "manual": "Enter manually"
     },
+    "dpdp": {
+      "title": "Before you add a photo",
+      "whatTitle": "What we collect",
+      "what": "The receipt photo and the details you confirm — vendor, amount, date, category.",
+      "whyTitle": "Why",
+      "why": "To work out which tax deduction it falls under, and show it on your dashboard and in your report.",
+      "whereTitle": "Where it's stored",
+      "where": "Only in this browser tab, for this session — nothing is uploaded or saved anywhere else right now.",
+      "deleteTitle": "How to delete it",
+      "delete": "Closing or reloading the app clears everything — there's nothing saved outside this tab to delete.",
+      "gotIt": "Got it"
+    },
     "review": {
       "heading": "Confirm this receipt",
       "sub": "We've filled this in — just check it's right.",
@@ -242,7 +254,7 @@
       "missedPreventiveCheckup": "No preventive health checkup logged — it counts inside your Section 126 (80D) self/family cap, up to {{amount}}, even if paid in cash.",
       "missedTuition": "No tuition fees logged — the tuition component (not admission, transport or hostel fees) counts under Section 123 (80C), old regime only, for up to two children.",
       "bigDisclaimer": "This is an informational estimate based on what you logged — not a filed tax computation. Confirm final figures with your CA or the official portal before filing.",
-      "footerDisclaimer": "Informational estimate — not tax advice. Not a filed return; cannot be submitted to the Income Tax Department.",
+      "footerDisclaimer": "Informational estimate — not tax advice. Not a filed return; cannot be submitted to the Income Tax Department. Keep the original receipt/proof for filing — this PDF doesn't store legal proof of payment.",
       "title": "TaxPlot — {{fy}} Tax-Saving Report"
     },
     "glossary": {
@@ -444,7 +456,7 @@
       "exportSummaryToast": "Summary exported as CSV in the real build",
       "askClient": "Ask client",
       "askClientToast": "Message sent to the client's app in the real build",
-      "footerNote": "Estimates from client-logged receipts. Not a filed computation."
+      "footerNote": "Estimates from client-logged receipts. Not a filed computation. Keep the client's original receipt/proof for filing — this workspace doesn't store legal proof of payment."
     },
     "review": {
       "approve": "Approve",
@@ -482,7 +494,7 @@
       "colUploaded": "Uploaded",
       "colAction": "Action",
       "queueClear": "Queue is clear",
-      "footerNote": "Approving marks the receipt as checked by your firm. It does not submit anything to the Income Tax Department.",
+      "footerNote": "Approving marks the receipt as checked by your firm. It does not submit anything to the Income Tax Department. Keep the client's original receipt/proof for filing — this workspace doesn't store legal proof of payment.",
       "cashFlag126": "Cash — not deductible",
       "cashFlag133": "Cash over ₹2,000"
     },

@@ -272,6 +272,7 @@ const ICON_PATHS = {
   report: '<path d="M5 20V10M10 20V4M15 20v-7M20 20v-4"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>',
   camera: '<path d="M3.5 8h3.2L8.5 5.5h7L17.3 8h3.2v11h-17z"/><circle cx="12" cy="13.3" r="3.6"/>',
+  speaker: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/>',
   scale: '<path d="M12 4v16M6 20h12M4 8h16"/><path d="M6.5 8 4 14h5zM17.5 8 15 14h5z"/>',
   down: '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>',
@@ -1094,7 +1095,7 @@ function renderGlossarySheet() {
       ${entry.example ? `<p class="note">${entry.example}</p>` : ""}
       <p class="meta">${t("glossary.whereYouSeeIt")}: ${entry.whereYouSeeIt} · ${t("glossary." + APPLIES_TO_KEY[entry.appliesTo])}</p>
       <div class="nav-row">
-        <button type="button" class="btn-ghost" data-act="read-aloud" data-value="${STATE.glossaryOpen}">${ic("info")}${t("glossary.readAloud")}</button>
+        <button type="button" class="btn-ghost" data-act="read-aloud" data-value="${STATE.glossaryOpen}">${ic("speaker")}${t("glossary.readAloud")}</button>
         <button type="button" class="btn-secondary" data-act="goto-glossary-library">${t("glossary.seeFullEntry")}</button>
       </div>
     </div>`;
@@ -1117,7 +1118,7 @@ function glossaryResultsHTML() {
       <p>${entry.plain}</p>
       ${entry.example ? `<p class="note">${entry.example}</p>` : ""}
       <p class="meta">${t("glossary.whereYouSeeIt")}: ${entry.whereYouSeeIt} · ${t("glossary." + APPLIES_TO_KEY[entry.appliesTo])}</p>
-      <button type="button" class="btn-ghost" data-act="read-aloud" data-value="${key}">${ic("info")}${t("glossary.readAloud")}</button>
+      <button type="button" class="btn-ghost" data-act="read-aloud" data-value="${key}">${ic("speaker")}${t("glossary.readAloud")}</button>
     </article>`).join("");
 }
 function renderGlossaryLibraryView() {
@@ -1337,8 +1338,7 @@ function buildReportData(fmtCurrency = fmtINR) {
   const missedItems = [];
   if (cmp.deductionsUsed.s126self === 0) missedItems.push(t("report.missedHealthSelf"));
   if (cmp.deductionsUsed.s126parents === 0) missedItems.push(t("report.missedHealthParents"));
-  if (cmp.deductionsUsed.s22 === 0 && hasHomeLoan()) missedItems.push(t("report.missedHomeLoan"));
-  if (hasHomeLoan()) missedItems.push(t("report.missedHomeLoanCert"));
+  if (hasHomeLoan()) missedItems.push(t(cmp.deductionsUsed.s22 === 0 ? "report.missedHomeLoan" : "report.missedHomeLoanCert"));
   if (hasRentNoHRA()) missedItems.push(t("report.missedRentNoHra"));
   if (cmp.deductionsUsed.s133 === 0) missedItems.push(t("report.missedDonations"));
   if (cmp.deductionsUsed.s124 === 0) missedItems.push(t("report.missedNps", { amount: fmtCurrency(TaxEngine.SECTION_CAPS.s124.cap) }));

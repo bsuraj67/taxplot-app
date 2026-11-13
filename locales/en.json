@@ -93,14 +93,26 @@
       "whyTitle": "Why",
       "why": "To work out which tax deduction it falls under, and show it on your dashboard and in your report.",
       "whereTitle": "Where it's stored",
-      "where": "Only in this browser tab, for this session — nothing is uploaded or saved anywhere else right now.",
+      "where": "Only on this device, in this browser's own storage — nothing is uploaded to a server. Clearing your browser data, or your browser running low on space, can erase it, so use Settings → Your data to save a backup.",
       "deleteTitle": "How to delete it",
-      "delete": "Closing or reloading the app clears everything — there's nothing saved outside this tab to delete.",
+      "delete": "Settings → Your data → Delete my data erases all receipts, photos and answers from this device. Backup files you saved yourself are not affected. Reloading no longer clears them.",
       "gotIt": "Got it"
     },
     "review": {
+      "quickLabel": "Quick pick",
+      "chipRent": "Rent",
+      "chipLic": "LIC / life insurance",
+      "chipMf": "Mutual fund",
+      "chipPpf": "PPF",
+      "chipHomeLoan": "Home loan principal",
+      "chipTuition": "School fee",
+      "chipHealth": "Health premium",
+      "sameAsLast": "Same as last: {{vendor}}",
+      "saveAnother": "Save & add another",
       "heading": "Confirm this receipt",
       "sub": "We've filled this in — just check it's right.",
+      "headingBlank": "Add this receipt",
+      "subBlank": "Fill in what you can — we'll remember it for your report.",
       "noPhoto": "No photo — manual entry",
       "vendorLabel": "Vendor / Paid to",
       "vendorPlaceholder": "e.g. LIC of India",
@@ -112,7 +124,7 @@
       "notCountedToward": "Not counted toward any deduction",
       "rentLandlordPanLabel": "Landlord's PAN",
       "rentLandlordPanPlaceholder": "e.g. ABCDE1234F",
-      "rentPanRequiredNote": "Your landlord's PAN is required once annual rent is above {{amount}}.",
+      "rentPanRequiredNote": "Your landlord's PAN is generally needed once annual rent is above {{amount}} (estimate of the current rule; your employer may ask earlier).",
       "rentRelationshipLabel": "Relationship to landlord",
       "rentRelationshipPlaceholder": "Choose one…",
       "rentTdsWarning": "Rent above {{threshold}}/month means you may need to deduct TDS under Section {{sectionNew}} (was {{sectionOld}}) — {{rate}}% with the landlord's PAN on file, {{noPanRate}}% without it.",
@@ -143,6 +155,70 @@
       "warnDateOutsideFY": "Saved — but this date falls outside the current tax year. Double-check it's correct.",
       "warnCash126Disallowed": "Saved — but Section 126 (80D) premiums paid in cash generally aren't deductible. Only the preventive check-up line allows cash.",
       "warnCash133OverLimit": "Saved — but Section 133 (80G) cash donations above ₹2,000 aren't deductible. A non-cash payment would count in full."
+    },
+    "nudge": {
+      "declarationTitle": "Around April: employer tax declaration",
+      "declarationBody": "Many employers ask for your Form 124 (was 12BB) declaration, often around April, including which regime you want. If you do nothing, they usually assume the new regime.",
+      "proofsTitle": "Winter: investment proofs",
+      "proofsBody": "Many employers collect investment and rent proofs, roughly between December and February (some earlier or later). On the old regime, your Report tab has an employer proof pack grouped by section.",
+      "note": "Timing varies by employer: check your payroll calendar. Estimate only, not tax advice."
+    },
+    "todo": {
+      "title": "Do I need to do anything?",
+      "body": "On the new regime, usually not. The standard deduction ({{std}}) needs no proof, and if you give your employer no declaration they generally assume the new regime. You only need to submit investment proofs if you choose the old regime.",
+      "note": "Check your employer's payroll rules, which can differ. Estimate only, not tax advice."
+    },
+    "storage": {
+      "backupLabel": "Export backup",
+      "backupHelp": "Save a copy of your receipts, photos and answers as a file you keep. The file is not encrypted, so store it somewhere private.",
+      "backupBtn": "Export backup",
+      "restoreLabel": "Import backup",
+      "restoreHelp": "Restore from a backup file made here. This replaces what is on this device.",
+      "restoreBtn": "Import backup",
+      "backupStarted": "Backup download started",
+      "restored": "Backup restored.",
+      "badFile": "That file is not a TaxPlot backup.",
+      "saveFailed": "Could not save on this device — storage may be full. Export a backup now.",
+      "nearlyFull": "Device storage for TaxPlot is nearly full. Export a backup and remove old photos.",
+      "notPersisted": "Your browser may clear TaxPlot data when space is low or the app is unused for a while. Keep a backup; adding the app to your home screen may help."
+    },
+    "hraCheck": {
+      "inputLabel": "HRA exemption you plan to claim (per year)",
+      "inputPh": "e.g. from your rent receipts or payslip",
+      "save": "Check",
+      "warnTitle": "More than our HRA estimate",
+      "warn": "The HRA exemption you entered ({{claimed}}) is about {{excess}} more than the {{estimate}} we estimated for you. Estimates can differ from your payslip, so please double-check your basic salary, HRA received, rent and city before claiming it.",
+      "ok": "Your figure is within our HRA estimate. It is still only an estimate.",
+      "note": "Claiming more than the rules allow can lead to a notice. Estimate only, not tax advice: confirm with your employer or a CA."
+    },
+    "form130": {
+      "title": "Form 130 cross-check",
+      "sub": "· type in your own figures",
+      "intro": "Type figures from your Form 130 (salary tax certificate, was Form 16) and we compare them with what you have logged here. Nothing is fetched or sent anywhere.",
+      "gross": "Gross salary",
+      "s123": "Section 123 (80C) total",
+      "s126": "Section 126 (80D) total",
+      "tds": "Tax deducted (TDS)",
+      "check": "Compare",
+      "matches": "Close to ours",
+      "differs": "Differs from ours",
+      "rowLine": "{{label}}: Form 130 {{form}} · TaxPlot estimate {{mine}}",
+      "differsHelp": "A difference is not necessarily an error: our figures are estimates, caps apply, and some items are not logged here. Check the original documents or ask a CA.",
+      "tdsHelp": "TDS is compared with our estimated tax. This is an estimate, not your final tax. A gap usually means a refund or some tax still to pay.",
+      "empty": "Enter at least one figure to compare."
+    },
+    "freelance": {
+      "title": "Money received",
+      "sub": "· freelance / business",
+      "clientPh": "Client",
+      "amountPh": "Amount received",
+      "add": "Add",
+      "unnamed": "Client",
+      "total": "Total received so far:",
+      "estimate": "If you are a professional covered by the scheme — presumptive scheme (Section 44ADA, new number to be verified): about {{pct}}% of receipts, {{profit}}, may be treated as profit. Estimate only, not your final tax.",
+      "digitalOnly": "Above the lower limit the scheme needs almost all receipts to come digitally. Check with a CA.",
+      "overLimit": "Receipts look above the presumptive scheme limit, so it may not apply. Check with a CA.",
+      "reminder": "Advance tax reminder: freelancers on the presumptive scheme can pay the year's advance tax in one go by {{date}}; others pay in instalments. Confirm with a CA."
     },
     "overview": {
       "greeting": "Namaste",
@@ -210,6 +286,7 @@
       "headerTitle": "Receipts",
       "filterAll": "All",
       "filterHRA": "HRA",
+      "emptyAllNote": "No receipts yet — snap your first one, or enter one manually.",
       "emptyFilterNote": "No receipts in this filter yet.",
       "tableDate": "Date",
       "tablePaidTo": "Paid to",
@@ -236,6 +313,9 @@
       "moreRoom": "{{amount}} more room",
       "fullyUsed": "Fully used",
       "emptyReport": "No deductions logged yet this year — snap a receipt to start building your report.",
+      "missedDeadlineTitle": "Missed your employer's deadline?",
+      "missedDeadlineBody": "Missing the proof cut-off at work usually means more tax is deducted from your salary for now, not a lost deduction. Under the old regime, genuine deductions can generally still be claimed when you file your return, and tax deducted in excess may come back as a refund. Keep your proofs.",
+      "missedDeadlineNote": "Informational only. Based on how this worked under earlier rules; we have not confirmed the 2025 Act wording. Ask your payroll team what they can still accept, and confirm with a CA.",
       "missedHeader": "A few things you didn't log this year",
       "downloadPdf": "Download as PDF",
       "downloadEmployerPack": "Employer proof pack",
@@ -249,11 +329,25 @@
       "missedHealthSelf": "No health insurance premium logged for yourself or family — if you paid one, add it before we finalize this report.",
       "missedHealthParents": "No health insurance premium logged for parents — if you pay one, it has its own Section 126 (80D) cap on top of your own.",
       "missedHomeLoan": "No home loan interest logged — check if this applies to you.",
+      "missedHomeLoanCert": "Home loan: ask your lender for the year's interest certificate — it is the proof for Section 22 (24(b)) interest.",
+      "missedRentNoHra": "You pay rent but get no HRA — Section 134 (80GG) may apply to you under the old regime. Keep rent receipts and your landlord's details; conditions apply (for example, no HRA received, no home owned in your city), so check with a CA.",
       "missedDonations": "No donations logged — Section 133 (80G) gifts may still qualify.",
       "missedNps": "No extra NPS (Section 124) logged — an easy {{amount}} top-up bucket if you have room.",
       "missedPreventiveCheckup": "No preventive health checkup logged — it counts inside your Section 126 (80D) self/family cap, up to {{amount}}, even if paid in cash.",
       "missedTuition": "No tuition fees logged — the tuition component (not admission, transport or hostel fees) counts under Section 123 (80C), old regime only, for up to two children.",
       "bigDisclaimer": "This is an informational estimate based on what you logged — not a filed tax computation. Confirm final figures with your CA or the official portal before filing.",
+      "plain": {
+        "s123": "investments & savings",
+        "s124": "extra NPS",
+        "s126": "health insurance",
+        "s126self": "health insurance, self & family",
+        "s126parents": "health insurance, parents",
+        "s22": "home loan interest",
+        "hra": "rent paid",
+        "s133": "donations",
+        "oldRegime": "more deductions, higher slabs",
+        "newRegime": "default, few deductions"
+      },
       "footerDisclaimer": "Informational estimate — not tax advice. Not a filed return; cannot be submitted to the Income Tax Department. Keep the original receipt/proof for filing — this PDF doesn't store legal proof of payment.",
       "title": "TaxPlot — {{fy}} Tax-Saving Report"
     },
@@ -349,19 +443,19 @@
       "quietHoursHelp": "No notifications between 10 pm and 8 am.",
       "quietHoursAria": "Quiet hours",
       "yourDataHeader": "Your data",
-      "yourDataSub": "Your receipts belong to you. You can take them out or erase them. Receipts and onboarding answers are kept in this browser tab only and reset on reload — there's no account on a server yet.",
+      "yourDataSub": "Your receipts belong to you. You can take them out or erase them. Receipts, photos and answers stay on this device in your browser's storage — there's no account on a server, and reloading no longer clears them. Save a backup in case your browser clears its data.",
       "downloadDataLabel": "Download my data",
       "downloadDataHelp": "A JSON file with your receipts and settings.",
       "downloadDataBtn": "Download",
       "resetDemoLabel": "Reset demo data",
       "resetDemoHelp": "Clears receipts and answers and takes you back to the regime quiz.",
       "resetDemoBtn": "Reset demo data",
-      "deleteAccountLabel": "Delete my account",
+      "deleteAccountLabel": "Delete my data",
       "deleteAccountHelp": "Erases receipts, photos and settings on this device. This can't be undone.",
       "deleteConfirmQuestion": "Delete everything?",
       "deleteYes": "Yes, delete",
       "cancel": "Cancel",
-      "deleteBtn": "Delete account",
+      "deleteBtn": "Delete my data",
       "cityAria": "City",
       "toastSettingsReset": "Settings reset",
       "toastDemoReset": "Demo data reset.",
@@ -421,7 +515,14 @@
       "colLastUpload": "Last upload",
       "byAmount": "by {{amount}}",
       "selectAllAria": "Select all",
-      "selectClientAria": "Select {{name}}"
+      "selectClientAria": "Select {{name}}",
+      "colDocs": "Documents",
+      "col126split": "self & family · parents",
+      "filterDocs": "Missing documents",
+      "docsCount": "{{got}} of {{need}}",
+      "docsNone": "None needed",
+      "colReturn": "Likely return",
+      "filterDue": "Due {{date}}"
     },
     "kpis": {
       "activeClients": "Active clients",
@@ -445,6 +546,8 @@
       "oldRegime": "Old regime",
       "newRegime": "New regime",
       "fullyUsed": "Fully used",
+      "gloss126self": "self & family",
+      "gloss126parents": "parents",
       "notLogged": "Not logged",
       "amountLeft": "{{amount}} left",
       "of": "of {{cap}}",
@@ -456,7 +559,37 @@
       "exportSummaryToast": "Summary exported as CSV in the real build",
       "askClient": "Ask client",
       "askClientToast": "Message sent to the client's app in the real build",
-      "footerNote": "Estimates from client-logged receipts. Not a filed computation. Keep the client's original receipt/proof for filing — this workspace doesn't store legal proof of payment."
+      "footerNote": "Estimates from client-logged receipts. Not a filed computation. Keep the client's original receipt/proof for filing — this workspace doesn't store legal proof of payment.",
+      "docsHeader": "Documents ({{got}} of {{need}} received)",
+      "docGot": "Received",
+      "docMissing": "Missing",
+      "docsNoneNeeded": "No documents needed yet."
+    },
+    "evidence": {
+      "button": "Evidence pack (PDF)",
+      "title": "Evidence pack — {{name}} — {{fy}}",
+      "intro": "What was logged in TaxPlot for this client, grouped by deduction section. These are TaxPlot's own records, not a verified audit trail and not a tax computation. Receipt images will appear here once the client uploads real receipts.",
+      "empty": "No deduction receipts logged yet.",
+      "colSection": "Section",
+      "colAmount": "Amount logged",
+      "colLastUpload": "Last upload",
+      "failed": "Could not build the PDF — check your connection and try again.",
+      "footer": "Informational estimate — not tax advice. Documents what was logged in TaxPlot; not a filed return. Keep the client's original receipts/proof for filing — this PDF doesn't store legal proof of payment.",
+      "plain": {
+        "s123": "investments & savings",
+        "s124": "extra NPS",
+        "s126self": "health insurance, self & family",
+        "s126parents": "health insurance, parents",
+        "s22": "home loan interest",
+        "s133": "donations"
+      }
+    },
+    "secPlain": {
+      "123": "investments & savings",
+      "124": "extra NPS",
+      "126": "health insurance",
+      "22": "home loan interest",
+      "133": "donations"
     },
     "review": {
       "approve": "Approve",
@@ -466,13 +599,26 @@
       "checkField": " · check {{field}}",
       "approved": "Approved",
       "querySent": "Query sent to client",
-      "rejected": "Rejected"
+      "rejected": "Rejected",
+      "reasonLabel": "Reason (optional — saved with Query or Reject)",
+      "reasonPlaceholder": "e.g. Amount unclear, please re-upload",
+      "activityTitle": "Activity",
+      "activityEmpty": "No review activity yet.",
+      "activityBy": "{{who}} · {{time}}",
+      "activityReason": "Reason: {{reason}}",
+      "act": {
+        "approve": "Approved",
+        "query": "Queried",
+        "reject": "Rejected"
+      }
     },
     "dash": {
-      "greeting": "Good evening, Ritu",
+      "greetingMorning": "Good morning, Ritu",
+      "greetingAfternoon": "Good afternoon, Ritu",
+      "greetingEvening": "Good evening, Ritu",
       "practiceLine": "Example practice · {{n}} clients · sample data",
       "nextDeadlines": "Next deadlines",
-      "nextDeadlinesSub": "Dates to verify each Budget — see tax-engine.js.",
+      "nextDeadlinesSub": "Dates are estimates — check them against the official calendar each Budget.",
       "daysLabel": "{{n}} days",
       "lowConfidenceReceipts": "Lowest-confidence receipts",
       "lowConfidenceSub": "Read these first.",
@@ -496,7 +642,8 @@
       "queueClear": "Queue is clear",
       "footerNote": "Approving marks the receipt as checked by your firm. It does not submit anything to the Income Tax Department. Keep the client's original receipt/proof for filing — this workspace doesn't store legal proof of payment.",
       "cashFlag126": "Cash — not deductible",
-      "cashFlag133": "Cash over ₹2,000"
+      "cashFlag133": "Cash over ₹2,000",
+      "capFlag": "Section already at its cap"
     },
     "deadlines": {
       "title": "Deadlines",
@@ -507,7 +654,8 @@
       "colDaysLeft": "Days left",
       "colStatus": "Status",
       "actSoon": "Act soon",
-      "upcoming": "Upcoming"
+      "upcoming": "Upcoming",
+      "passed": "Passed"
     },
     "reports": {
       "title": "Reports",
@@ -516,9 +664,18 @@
       "exportBtn": "Export",
       "exportToast": "Export runs in the real build",
       "items": [
-        { "title": "Client deduction summary", "help": "One row per client and section. CSV." },
-        { "title": "Receipts register", "help": "Every approved receipt with section and amount. CSV." },
-        { "title": "Regime comparison", "help": "Old vs new estimate per client. PDF." }
+        {
+          "title": "Client deduction summary",
+          "help": "One row per client and section. CSV."
+        },
+        {
+          "title": "Receipts register",
+          "help": "Every approved receipt with section and amount. CSV."
+        },
+        {
+          "title": "Regime comparison",
+          "help": "Old vs new estimate per client. PDF."
+        }
       ],
       "noteBox": "TaxPlot does not file returns. Exports are working papers for your own software. If you want filing from inside TaxPlot later, it needs ERI registration with the Income Tax Department."
     },
@@ -550,6 +707,8 @@
       "sectionNumbersOld": "80C (Sec 123)",
       "maskPanLabel": "Mask PAN",
       "maskPanHelp": "Show only the first three and last two characters.",
+      "plainWordsLabel": "Show plain words",
+      "plainWordsHelp": "Add a short everyday meaning after each section name, e.g. Sec 126 (80D) — health insurance.",
       "lowConfidenceLabel": "Low-confidence threshold",
       "lowConfidenceHelp": "Receipts read below this are flagged for review.",
       "belowPct": "Below {{v}}%",
@@ -572,10 +731,68 @@
       "synced": "Synced 2 min ago",
       "sampleData": "Sample data",
       "searchHint": "<span><kbd>/</kbd> search</span><span><kbd>J</kbd><kbd>K</kbd> move</span><span><kbd>A</kbd> approve</span>",
-      "disclaimer": "Informational estimates, not tax advice"
+      "disclaimer": "Informational estimate — not tax advice."
     },
     "theme": {
       "label": "Theme: {{theme}}"
+    },
+    "docs": {
+      "form130": "Form 130 (salary tax certificate, was Form 16)",
+      "ais": "AIS (tax department record of your income)",
+      "rent": "Rent receipts with landlord PAN (for HRA)",
+      "cert126": "Health insurance certificate — Section 126 (80D)",
+      "homeLoan": "Home loan interest certificate — Section 22 (24(b))",
+      "nps": "NPS statement — Section 124 (80CCD(1B))",
+      "cert126p": "Health insurance certificate for parents — Section 126 (80D)",
+      "donation": "Donation receipts with the charity's details — Section 133 (80G)",
+      "income": "Invoices or payment records for the year (self-employed income)"
+    },
+    "bulk": {
+      "title": "Ask clients for a missing document",
+      "sub": "Pick a document to see who has not sent it yet.",
+      "chip": "{{doc}} · {{n}}",
+      "none": "Nobody is missing this document.",
+      "listHeader": "{{n}} clients still to send: {{doc}}",
+      "note": "Each button opens WhatsApp with the message ready. You choose the contact and press send; TaxPlot does not send anything.",
+      "ask": "Ask on WhatsApp",
+      "close": "Close",
+      "messageOne": "Hi {{name}}, for your {{fy}} tax records could you please send: {{docs}}? Thank you."
+    },
+    "returns": {
+      "itr12": "ITR-1/ITR-2",
+      "itr34": "ITR-3/ITR-4",
+      "cell": "{{form}} · due {{date}}",
+      "note": "A starting pointer taken only from the client type (salaried or not): not a filing decision and not tax advice: the CA confirms the right form and the current due date for each client.",
+      "detailLabel": "Likely return"
+    },
+    "room": {
+      "title": "Room left under each section",
+      "sub": "Pick a section to see which clients can still claim more. Amounts are estimates from logged receipts.",
+      "chip": "{{sec}} · {{n}}",
+      "none": "Nobody has room left under this section.",
+      "listHeader": "{{n}} clients with room under {{sec}}",
+      "row": "{{amount}} left of {{cap}}",
+      "ask": "Nudge on WhatsApp",
+      "bulkAsk": "One message for all {{n}}",
+      "bulkNote": "The bulk message has no names or amounts, so you can paste it into a WhatsApp broadcast list. Each button opens WhatsApp with the message ready. You choose the contact and press send; TaxPlot does not send anything.",
+      "messageOne": "Hi {{name}}, a factual note on your {{fy}} records: you have {{amount}} room left under {{sec}} (limit {{cap}}, estimate from receipts logged so far; it counts only under the old regime). Not tax advice, and no action needed if this is already covered.",
+      "messageAll": "Hi, a factual note on your {{fy}} records: you may have room left under {{sec}} (limit {{cap}}, old regime only). Reply and I will share my estimate for you.",
+      "noneOldRegime": "No client is better off on the old regime at current figures, so there is no deduction room to nudge about. This list fills in for clients whose old-regime estimate is lower."
+    },
+    "election": {
+      "chip": "Check regime",
+      "filter": "Regime check",
+      "label": "Regime on record",
+      "detail": "On record: {{elected}} regime. The estimate from logged receipts puts the {{better}} regime lower by about {{amount}}. Worth confirming with the client which regime they intend; this is a prompt to check, not a recommendation, and the final figures can differ. TaxPlot does not change any election.",
+      "ok": "On record: {{elected}} regime, same as the lower estimate.",
+      "note": "Regime on record is sample data here. The flag compares it with the estimate only; it is informational, not tax advice."
+    },
+    "landlord": {
+      "chip": "Landlord PAN?",
+      "filter": "Landlord PAN",
+      "detail": "Landlord PAN not on record. It is generally needed when annual rent is above {{threshold}} (estimate of the current rule). Rent on record: {{rent}} a year. Ask the client; TaxPlot does not check or submit it.",
+      "ok": "Landlord PAN on file for the rent recorded ({{rent}} a year).",
+      "note": "Rent and landlord PAN on record are sample data here. The threshold is an estimate of the current rule."
     }
   }
 }

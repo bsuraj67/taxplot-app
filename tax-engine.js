@@ -24,12 +24,12 @@ const TAX_CONFIG = {
     { date: "2026-06-15", label: "Advance tax · 1st instalment", who: "Clients with business or freelance income" }, // [VERIFY]
     { date: "2026-09-15", label: "Advance tax · 2nd instalment", who: "Clients with business or freelance income" }, // [VERIFY]
     { date: "2026-12-15", label: "Advance tax · 3rd instalment", who: "Clients with business or freelance income" }, // [VERIFY]
-    { date: "2027-03-15", label: "Advance tax · 4th instalment", who: "Clients with business or freelance income; presumptive filers (Section 44ADA/44AD) may pay the full year's advance tax in this one instalment" }, // [VERIFY] patronaccounting.com; caclubindia.com
+    { key: "advTaxFinal", date: "2027-03-15", label: "Advance tax · 4th instalment", who: "Clients with business or freelance income; presumptive filers (Section 44ADA/44AD) may pay the full year's advance tax in this one instalment" }, // [VERIFY] patronaccounting.com; caclubindia.com
     { date: "2027-03-31", label: "Last day to invest for FY 2026–27", who: "Section 123 (80C), 124 (80CCD(1B)), 126 (80D)" }, // [VERIFY]
     { date: "2027-03-31", label: "Revised return due", who: "Anyone who needs to correct a filed return" }, // [VERIFY]
-    { date: "2027-07-31", label: "ITR due · ITR-1/ITR-2", who: "Salaried with no business/professional income" }, // [VERIFY]
-    { date: "2027-08-31", label: "ITR due · ITR-3/ITR-4 non-audit cases", who: "Freelancers and small businesses (non-audit) — permanent from AY 2026-27, Finance Act 2026" }, // [VERIFY] patronaccounting.com; caclubindia.com
-    { date: "2027-10-31", label: "ITR due · audit cases", who: "Businesses/professionals requiring a tax audit" }, // [VERIFY] AY 2027-28 standard date; AY 2026-27 was extended to 21 Nov 2026 as a one-off
+    { key: "itr12", date: "2027-07-31", label: "ITR due · ITR-1/ITR-2", who: "Salaried with no business/professional income" }, // [VERIFY]
+    { key: "itr34", date: "2027-08-31", label: "ITR due · ITR-3/ITR-4 non-audit cases", who: "Freelancers and small businesses (non-audit) — permanent from AY 2026-27, Finance Act 2026" }, // [VERIFY] patronaccounting.com; caclubindia.com
+    { key: "itrAudit", date: "2027-10-31", label: "ITR due · audit cases", who: "Businesses/professionals requiring a tax audit" }, // [VERIFY] AY 2027-28 standard date; AY 2026-27 was extended to 21 Nov 2026 as a one-off
   ],
 
   // Rent — landlord PAN + TDS thresholds (not yet surfaced in the UI; feeds the rent helper).
@@ -140,6 +140,11 @@ const TAX_CONFIG = {
   hraRentOffsetPct: 0.1, // [VERIFY] 10% of basic subtracted from rent paid
   hraAssumedBasicPct: 0.5, // [VERIFY / APPROXIMATION] basic salary ≈ 50% of gross
   hraReceivedApproxPct: 0.4, // [VERIFY / APPROXIMATION] stand-in for HRA component received
+  // Overclaim / cross-check tolerances. Our HRA and totals are approximations,
+  // so only flag when a typed-in figure is clearly beyond ours.
+  hraOverclaimTolerancePct: 0.05, // [VERIFY] share of our estimate allowed before the HRA warning shows
+  form130TolerancePct: 0.02, // [VERIFY] share by which a Form 130 figure may differ before it is flagged
+  form130RoundingRupees: 100, // [VERIFY] ignore differences up to this (rounding)
 
   // Task 4a: new regime is the default for every user (Section 202 of the
   // 2025 Act). We compare regimes silently and only surface a nudge toward
@@ -154,6 +159,10 @@ const TAX_CONFIG = {
     "₹12L–₹20L": 1600000,
     "Above ₹20L": 2500000,
   }, // [VERIFY]
+  // Presumptive scheme for professionals/freelancers (old Section 44ADA; the 2025 Act number is UNVERIFIED).
+  presumptive: { profitPct: 0.5, receiptsLimit: 5000000, receiptsLimitDigital: 7500000 }, // [VERIFY] 50% deemed profit; limits ₹50L / ₹75L (75L only if cash receipts <= 5%)
+  // Months (1-12) when employers usually ask for tax declarations / proofs. Employer-specific; shown as "often", never as a deadline.
+  employerCalendar: { declaration: { startMonth: 4, endMonth: 4 }, proofs: { startMonth: 12, endMonth: 2 } }, // [VERIFY] Form 124 timing; sources conflict (Dec-Jan vs Jan-Feb), window kept wide
   defaultIncomeFallback: 950000, // [VERIFY] used when no income band or exact income is set yet
 };
 
@@ -335,6 +344,38 @@ function estimateHRAExemption({ rentPaidAnnual, grossIncome, city, fyLabel = TAX
 }
 
 /**
+ * HRA overclaim check (informational). `claimed` is the annual HRA exemption
+ * the user says they will claim; `estimate` is estimateHRAExemption()'s result.
+ * Returns { over, claimed, estimate, excess }. Never blocks anything.
+ */
+function hraOverclaimCheck({ claimed, estimate }) {
+  const c = Number(claimed);
+  if (!isFinite(c) || c <= 0) return { over: false, claimed: 0, estimate: estimate || 0, excess: 0 };
+  const e = Math.max(0, Number(estimate) || 0);
+  const over = c > e * (1 + TAX_CONFIG.hraOverclaimTolerancePct);
+  return { over, claimed: c, estimate: e, excess: over ? Math.round(c - e) : 0 };
+}
+
+/**
+ * Form 130 (was Form 16) cross-check. `form` holds figures the user typed from
+ * their own Form 130; `mine` holds TaxPlot's numbers. Pure arithmetic: nothing
+ * is fetched. Each row: { key, form, mine, differs }. Blank fields are skipped.
+ */
+function form130CrossCheck(form, mine) {
+  const tol = TAX_CONFIG.form130TolerancePct, abs = TAX_CONFIG.form130RoundingRupees;
+  const keys = ["gross", "s123", "s126", "tds"];
+  const rows = [];
+  keys.forEach((key) => {
+    const raw = form && form[key];
+    if (raw === "" || raw == null || !isFinite(Number(raw))) return;
+    const f = Number(raw), m = Number(mine && mine[key]) || 0;
+    const diff = Math.abs(f - m);
+    rows.push({ key, form: f, mine: m, differs: diff > abs && diff > Math.max(f, m) * tol });
+  });
+  return rows;
+}
+
+/**
  * Compute deduction totals per section from a receipts array, capped.
  */
 function summarizeDeductions(receipts, { section126SelfCap = getSection126SelfCap(), section126ParentsCap = getSection126ParentsCap() } = {}) {
@@ -407,6 +448,8 @@ const TaxEngineExports = {
   FY_START: TAX_CONFIG.fyStart,
   FY_END: TAX_CONFIG.fyEnd,
   DEADLINES: TAX_CONFIG.deadlines,
+  PRESUMPTIVE: TAX_CONFIG.presumptive,
+  EMPLOYER_CALENDAR: TAX_CONFIG.employerCalendar,
   NEW_REGIME_SLABS: TAX_CONFIG.newRegimeSlabs,
   OLD_REGIME_SLABS: TAX_CONFIG.oldRegimeSlabs,
   SECTION_CAPS: TAX_CONFIG.sectionCaps,
@@ -429,6 +472,8 @@ const TaxEngineExports = {
   isSection133CashDisallowed,
   checkReceiptRules,
   estimateHRAExemption,
+  hraOverclaimCheck,
+  form130CrossCheck,
   summarizeDeductions,
   compareRegimes,
 };

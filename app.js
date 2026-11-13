@@ -102,6 +102,30 @@ const CATEGORY_GROUPS = [
 // fake data, since there's no real extraction backend yet.
 // TODO(backend): replace the mock extraction pool with a real POST to your
 // extraction endpoint once the backend exists (see knowledge base §3).
+//
+// EXTRACTION_ENDPOINT is the hookup point for that: set it (a `var`, so it's
+// reachable as window.EXTRACTION_ENDPOINT for wiring/tests) once a backend
+// exists — never put an API key here, the key lives server-side behind this
+// URL. Left null, extractReceiptFromPhoto() is a no-op and usePhoto() keeps
+// today's honest blank-draft behavior.
+var EXTRACTION_ENDPOINT = null; // VERIFY: set by Developer once the backend exists
+
+// Returns null synchronously if no endpoint is configured (today's default —
+// no network call attempted), or a Promise<object|null> once one is: resolves
+// to the parsed {vendor, amount, category, lowConfidence} on success, or null
+// on any non-OK response, bad JSON, or network error — callers treat both the
+// sync-null and resolved-null cases the same way (fall back to a blank draft).
+function extractReceiptFromPhoto(photoDataUrl) {
+  if (!EXTRACTION_ENDPOINT) return null;
+  return fetch(EXTRACTION_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ photo: photoDataUrl }),
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => (data && typeof data === "object" ? data : null))
+    .catch(() => null);
+}
 
 // ---------- State (in-memory, resets on reload by design) ----------
 function freshOnboarding() {
@@ -121,7 +145,11 @@ var STATE = {
   appView: "overview", // overview | receipts | report | settings
   onboarding: freshOnboarding(),
   regime: null, // 'old' | 'new' | 'compare'
+  // Client names here are third-party personal data (DPDP). In-memory only: if this is ever persisted or synced, add it to the DPDP notice or drop the name field.
+  incomeLog: [], // freelancer receipts-in log {client, amount}
   income: null, // exact annual income, defaults to band midpoint
+  hraClaimed: "", // user-typed annual HRA exemption they plan to claim
+  form130: { gross: "", s123: "", s126: "", tds: "" }, // user-typed Form 130 figures
   autoDetectEnabled: false,
   receipts: [],
   pendingDetected: [],
@@ -197,6 +225,9 @@ function rentPaidAnnual() {
 function hasHRA() {
   return STATE.onboarding.commitments.includes("Rent — and I get HRA in my salary");
 }
+function hasRentNoHRA() {
+  return STATE.onboarding.commitments.includes("Rent — but no HRA (freelancer/no HRA component)");
+}
 function hasHomeLoan() {
   return STATE.onboarding.commitments.includes("Home loan (EMI running)") ||
     STATE.receipts.some((r) => r.category === "Home Loan Interest" || r.category === "Home Loan Principal");
@@ -267,6 +298,7 @@ function meter(used, cap, st, segs) {
   if (st === "none") return `<div class="meter none" role="img" aria-label="Nothing logged"></div>`;
   return `<div class="meter ${st}" role="img" aria-label="${fmtINR(used)} of ${fmtINR(cap)} used">${(segs || [used]).map((a) => `<i style="width:${Math.min(100, (a / cap) * 100)}%"></i>`).join("")}</div>`;
 }
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function escAttr(s) { return String(s).replace(/"/g, "&quot;"); }
 const DISC = `<p class="disc">${ic("info")}${t("common.disclaimer")}</p>`;
 
@@ -285,6 +317,18 @@ function showApp(view) {
   STATE.confirmDelete = false;
   show("s-app");
 }
+// Footer on every screen (the in-app views add DISC themselves; these four did not).
+function withDisc(screenId, fn) {
+  return function () {
+    fn.apply(this, arguments);
+    const c = el(screenId).querySelector(".container");
+    if (c && !c.querySelector(".disc")) c.insertAdjacentHTML("beforeend", DISC);
+  };
+}
+renderOnboarding = withDisc("s-onboarding", renderOnboarding);
+renderPermission = withDisc("s-permission", renderPermission);
+renderQuickConfirm = withDisc("s-quickconfirm", renderQuickConfirm);
+renderReview = withDisc("s-review", renderReview);
 function renderCurrentScreen() {
   const map = {
     "s-onboarding": renderOnboarding,
@@ -607,16 +651,27 @@ function usePhoto() {
       const success = Math.random() > 0.05;
       if (!success) { STATE.camera.phase = "fallback"; paintCamera(); return; }
       const pick = TaxEngine.DEMO_MOCK_EXTRACTIONS[Math.floor(Math.random() * TaxEngine.DEMO_MOCK_EXTRACTIONS.length)];
-      STATE.reviewDraft = { vendor: pick.vendor, date: new Date().toISOString().slice(0, 10), amount: pick.amount, category: pick.category, notes: "", photo: STATE.camera.photo, lowConfidence: pick.lowConfidence, landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
-    } else {
-      // Honest default: no real extraction backend exists yet, so the photo
-      // is kept and the user fills in details themselves — same shape as
-      // manual entry, just with the photo attached.
-      STATE.reviewDraft = { vendor: "", date: new Date().toISOString().slice(0, 10), amount: "", category: "", notes: "", photo: STATE.camera.photo, lowConfidence: [], landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
+      applyExtractionResult({ vendor: pick.vendor, amount: pick.amount, category: pick.category, lowConfidence: pick.lowConfidence });
+      return;
     }
-    STATE.reviewDraftSource = "camera";
-    show("s-review");
+    // Honest default: no real extraction backend exists yet (or, once one is
+    // wired via EXTRACTION_ENDPOINT, the call failed) — the photo is kept and
+    // the user fills in details themselves, same shape as manual entry, just
+    // with the photo attached.
+    const result = extractReceiptFromPhoto(STATE.camera.photo);
+    if (result && typeof result.then === "function") {
+      result.then(applyExtractionResult).catch(() => applyExtractionResult(null));
+      return;
+    }
+    applyExtractionResult(result);
   }, 1100);
+}
+function applyExtractionResult(extracted) {
+  STATE.reviewDraft = extracted
+    ? { vendor: extracted.vendor || "", date: new Date().toISOString().slice(0, 10), amount: extracted.amount || "", category: extracted.category || "", notes: "", photo: STATE.camera.photo, lowConfidence: extracted.lowConfidence || [], landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" }
+    : { vendor: "", date: new Date().toISOString().slice(0, 10), amount: "", category: "", notes: "", photo: STATE.camera.photo, lowConfidence: [], landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
+  STATE.reviewDraftSource = "camera";
+  show("s-review");
 }
 function enterManually() {
   STATE.reviewDraft = { vendor: "", date: new Date().toISOString().slice(0, 10), amount: "", category: "", notes: "", photo: null, lowConfidence: [], landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
@@ -633,14 +688,19 @@ function renderReview() {
   if (!d) { showApp("overview"); return; }
   const mapped = d.category ? TaxEngine.CATEGORY_MAP[d.category] : null;
   const flag = (field) => (d.lowConfidence.includes(field) ? `<span class="flag">${t("review.flag")}</span>` : "");
+  // GitHub issue #8: "We've filled this in" is wrong when the draft is blank
+  // (today's default camera path with no real extraction backend, or manual
+  // entry) — only claim it was filled in when vendor/amount actually are.
+  const prefilled = Boolean(d.vendor || d.amount);
 
   c.innerHTML = `
     <div class="review-head">
-      <h2>${t("review.heading")}</h2>
-      <p>${t("review.sub")}</p>
+      <h2>${t(prefilled ? "review.heading" : "review.headingBlank")}</h2>
+      <p>${t(prefilled ? "review.sub" : "review.subBlank")}</p>
     </div>
     <div class="review-thumb">${d.photo ? `<img src="${d.photo}" alt="Receipt" />` : t("review.noPhoto")}</div>
 
+    ${STATE.reviewDraftSource === "manual" ? quickChips(d) : ""}
     <div class="field">
       <label>${t("review.vendorLabel")}
       <input class="input" data-field="vendor" value="${escAttr(d.vendor)}" placeholder="${t("review.vendorPlaceholder")}" /></label>
@@ -676,6 +736,7 @@ function renderReview() {
 
     <div class="save-btn">
       <button class="btn-primary" data-action="save-receipt" style="margin-top:4px;">${t("review.save")}</button>
+      ${STATE.reviewDraftSource === "manual" ? `<button type="button" class="btn-ghost" data-action="save-another">${t("review.saveAnother")}</button>` : ""}
       <button type="button" class="discard" data-action="discard-receipt">${t("review.discard")}</button>
       <div class="micro-disc">${ic("info")}${t("review.microDisc")}</div>
     </div>
@@ -773,7 +834,19 @@ const RULE_WARNING_KEYS = {
   cash126Disallowed: "review.warnCash126Disallowed",
   cash133OverLimit: "review.warnCash133OverLimit",
 };
-function saveReceipt() {
+// Item 2: common-receipt shortcuts on the Review screen (category names must exist in CATEGORY_GROUPS).
+const QUICK_CATEGORIES = [
+  ["Rent (for HRA)", "review.chipRent"], ["Life Insurance Premium", "review.chipLic"], ["ELSS / Mutual Fund", "review.chipMf"],
+  ["Tuition Fees", "review.chipTuition"], ["PPF", "review.chipPpf"], ["Home Loan Principal", "review.chipHomeLoan"], ["Health Insurance — Self/Family", "review.chipHealth"],
+];
+function quickChips(d) {
+  const last = STATE.lastEntry;
+  const sameAsLast = last && !d.vendor && !d.category
+    ? `<button type="button" class="chip" data-action="same-as-last">${t("review.sameAsLast", { vendor: esc(last.vendor), category: esc(last.category) })}</button>` : "";
+  const chips = QUICK_CATEGORIES.map(([c, k]) => `<button type="button" class="chip${d.category === c ? " on" : ""}" data-action="quick-cat" data-value="${escAttr(c)}" aria-pressed="${d.category === c}">${t(k)}</button>`).join("");
+  return `<div class="field"><div class="meta">${t("review.quickLabel")}</div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${sameAsLast}${chips}</div></div>`;
+}
+function saveReceipt(addAnother) {
   const d = STATE.reviewDraft;
   if (!d.vendor.trim()) return showToast(t("review.toastVendor"));
   if (!d.amount || Number(d.amount) <= 0) return showToast(t("review.toastAmount"));
@@ -792,7 +865,9 @@ function saveReceipt() {
   const mapped = TaxEngine.CATEGORY_MAP[d.category];
   const warningKey = ruleWarnings.length && RULE_WARNING_KEYS[ruleWarnings[0]];
   showToast(warningKey ? t(warningKey) : mapped && mapped.label ? t("quickconfirm.savedTowardToast", { label: mapped.label.split(" — ")[0] }) : t("review.savedToast"));
+  STATE.lastEntry = { vendor: d.vendor.trim(), category: d.category };
   STATE.reviewDraft = null;
+  if (addAnother === true) { enterManually(); return; }
   showApp("overview");
 }
 function discardReceipt() { STATE.reviewDraft = null; showApp("overview"); }
@@ -815,7 +890,93 @@ function headBar(title, sub) {
   <button class="btn" type="button" data-act="goto-camera">${ic("camera")}<span class="snap-label">${t("common.snapReceipt")}</span></button></div>`;
 }
 
+// ---------- On-device storage (IndexedDB) ----------
+// Receipts, photos and answers stay in this browser only; nothing is uploaded.
+// The whole snapshot is one record. incomeLog (client names, third-party data)
+// is deliberately NOT saved. No-op where indexedDB is missing (e.g. tests).
+const DB_NAME = "taxplot", DB_STORE = "state", DB_KEY = "snapshot";
+function idb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") return reject(new Error("no indexedDB"));
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(DB_STORE);
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+function idbRun(mode, fn) {
+  return idb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, mode);
+    const req = fn(tx.objectStore(DB_STORE));
+    tx.oncomplete = () => { db.close(); resolve(req && req.result); };
+    tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+  }));
+}
+function buildBackup() {
+  return { app: "taxplot", version: 1, savedAt: new Date().toISOString(), onboarding: STATE.onboarding, regime: STATE.regime, income: STATE.income, receipts: STATE.receipts, familyMembers: STATE.familyMembers, hraClaimed: STATE.hraClaimed, form130: STATE.form130 };
+}
+function applyBackup(b) {
+  if (!b || b.app !== "taxplot" || !Array.isArray(b.receipts)) return false;
+  STATE.onboarding = Object.assign(freshOnboarding(), b.onboarding || {});
+  STATE.regime = b.regime || "new";
+  STATE.income = b.income == null ? null : b.income;
+  STATE.receipts = b.receipts;
+  STATE.familyMembers = Array.isArray(b.familyMembers) ? b.familyMembers : [];
+  STATE.hraClaimed = b.hraClaimed == null ? "" : b.hraClaimed;
+  STATE.form130 = Object.assign({ gross: "", s123: "", s126: "", tds: "" }, b.form130 || {});
+  return true;
+}
+let persistTimer = null, persistWarned = false;
+function persistState() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    idbRun("readwrite", (st) => st.put(buildBackup(), DB_KEY)).catch(() => {
+      if (!persistWarned && typeof indexedDB !== "undefined") { persistWarned = true; showToast(t("storage.saveFailed")); }
+    });
+  }, 300);
+}
+function wipeStoredData() {
+  clearTimeout(persistTimer);
+  return idbRun("readwrite", (st) => st.clear()).catch(() => {});
+}
+async function loadStoredState() {
+  try {
+    const b = await idbRun("readonly", (st) => st.get(DB_KEY));
+    if (b && applyBackup(b)) return true;
+  } catch (e) {}
+  return false;
+}
+async function checkStorageHealth() {
+  try {
+    if (navigator.storage && navigator.storage.persist) STATE.storagePersisted = await navigator.storage.persist();
+    if (navigator.storage && navigator.storage.estimate) {
+      const { usage, quota } = await navigator.storage.estimate();
+      if (quota && usage / quota > 0.8) showToast(t("storage.nearlyFull"));
+    }
+  } catch (e) {}
+}
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(buildBackup())], { type: "application/json" });
+  const u = URL.createObjectURL(blob);
+  const l = document.createElement("a");
+  l.href = u; l.download = "taxplot-backup.json";
+  document.body.appendChild(l); l.click(); l.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 1000);
+  showToast(t("storage.backupStarted"));
+}
+function importBackupFile(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    let ok = false;
+    try { ok = applyBackup(JSON.parse(rd.result)); } catch (e) {}
+    if (ok) { persistState(); showToast(t("storage.restored")); STATE.screen === "s-app" ? renderApp() : showApp("overview"); }
+    else showToast(t("storage.badFile"));
+  };
+  rd.readAsText(file);
+}
+
 function renderApp() {
+  persistState();
   document.querySelectorAll(".nav-btn").forEach((b) => {
     const [i, label] = NAV[b.dataset.view];
     b.innerHTML = ic(i) + label();
@@ -863,7 +1024,33 @@ function capCard(s) {
 }
 function hraCard(cmp) {
   if (!hasHRA()) return "";
-  return `<article class="cap"><div class="cap-top"><h4>${gloss("hra", t("overview.hraTitle"))}<span class="sec-no">${t("overview.hraMeta", { rent: inr(rentPaidAnnual()), city: escAttr(STATE.onboarding.city || t("overview.hraCityNotSet")) })}</span></h4>${chip("room", t("overview.hraEstimateChip"))}</div><span class="figure num">${t("overview.hraFigure", { amount: inr(cmp.hraExempt) })}</span><p class="note">${t("overview.hraNote")}</p></article>`;
+  return `<article class="cap"><div class="cap-top"><h4>${gloss("hra", t("overview.hraTitle"))}<span class="sec-no">${t("overview.hraMeta", { rent: inr(rentPaidAnnual()), city: escAttr(STATE.onboarding.city || t("overview.hraCityNotSet")) })}</span></h4>${chip("room", t("overview.hraEstimateChip"))}</div><span class="figure num">${t("overview.hraFigure", { amount: inr(cmp.hraExempt) })}</span><p class="note">${t("overview.hraNote")}</p>${hraCheckHTML(cmp)}</article>`;
+}
+// HRA overclaim warning: informational, never blocks. Compares the figure the
+// user typed with estimateHRAExemption() (cmp.hraExempt).
+function hraCheckHTML(cmp) {
+  const r = TaxEngine.hraOverclaimCheck({ claimed: STATE.hraClaimed, estimate: cmp.hraExempt });
+  const result = r.claimed <= 0 ? "" : r.over
+    ? `<p class="note flag" data-hra-warn>${chip("check", t("hraCheck.warnTitle"))} ${t("hraCheck.warn", { claimed: inr(r.claimed), excess: inr(r.excess), estimate: inr(r.estimate) })}</p><p class="meta">${t("hraCheck.note")}</p>`
+    : `<p class="meta" data-hra-ok>${t("hraCheck.ok")}</p>`;
+  return `<div class="hra-check"><label class="meta" for="hra-claimed">${t("hraCheck.inputLabel")}</label>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap"><input class="text-input" id="hra-claimed" type="number" min="0" inputmode="numeric" placeholder="${t("hraCheck.inputPh")}" value="${escAttr(STATE.hraClaimed)}"><button type="button" class="btn" data-act="check-hra">${t("hraCheck.save")}</button></div>${result}</div>`;
+}
+// Form 130 cross-check: user-typed figures vs TaxPlot's own numbers. No AIS,
+// no portal; salaried / mixed users only.
+function form130Card(cmp) {
+  if (!(STATE.onboarding.employment === "Salaried" || STATE.onboarding.employment === "Mix of these")) return "";
+  const f = STATE.form130;
+  const du = cmp.deductionsUsed;
+  const mine = { gross: currentIncome(), s123: du.s123, s126: du.s126self + du.s126parents, tds: effectiveRegime() === "new" ? cmp.newTax : cmp.oldTax };
+  const labels = { gross: t("form130.gross"), s123: t("form130.s123"), s126: t("form130.s126"), tds: t("form130.tds") };
+  const rows = TaxEngine.form130CrossCheck(f, mine);
+  const anyDiff = rows.some((r) => r.differs);
+  const out = rows.map((r) => `<div class="meta" data-f130-row="${r.key}">${r.differs ? chip("check", t("form130.differs")) : chip("done", t("form130.matches"))} ${t("form130.rowLine", { label: labels[r.key], form: inr(r.form), mine: inr(r.mine) })}</div>`).join("");
+  const inputs = ["gross", "s123", "s126", "tds"].map((k) => `<label class="meta">${labels[k]}<input class="text-input" id="f130-${k}" type="number" min="0" inputmode="numeric" value="${escAttr(f[k])}"></label>`).join("");
+  return `<div class="card form130"><h3>${t("form130.title")} <small>${t("form130.sub")}</small></h3><p class="meta">${t("form130.intro")}</p>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">${inputs}<button type="button" class="btn" data-act="check-form130">${t("form130.check")}</button></div>
+    ${out}${anyDiff ? `<p class="meta">${t("form130.differsHelp")}</p>` : ""}${rows.some((r) => r.key === "tds") ? `<p class="meta">${t("form130.tdsHelp")}</p>` : ""}</div>`;
 }
 // ---------- "Tax words" glossary (task 4b) ----------
 // Entries with a real tax figure in their text carry {{placeholders}} instead
@@ -986,6 +1173,41 @@ function rrow(r) {
   const mapped = TaxEngine.CATEGORY_MAP[r.category];
   return `<div class="rrow"><div class="rthumb">${ic("receipt")}</div><div style="min-width:0"><div class="who">${r.vendor}</div><div class="meta">${fmtD(r.date)} · ${mapped && mapped.label ? mapped.label.split(" — ")[0] : r.category}</div></div><div class="amt"><span class="num">${inr(r.amount)}</span>${isReceiptFlagged(r) ? chip("check", "Check") : ""}</div></div>`;
 }
+function freelanceCard() {
+  if (!(isFreelancerOrBusiness() || STATE.onboarding.employment === "Mix of these")) return "";
+  const P = TaxEngine.PRESUMPTIVE;
+  const total = STATE.incomeLog.reduce((x, e) => x + e.amount, 0);
+  const d = TaxEngine.DEADLINES.find((x) => x.key === "advTaxFinal");
+  const dateTxt = d ? new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
+  const est = total > 0 ? (total > P.receiptsLimitDigital
+    ? `<p class="meta">${t("freelance.overLimit")}</p>`
+    : `<p>${t("freelance.estimate", { profit: inr(Math.round(total * P.profitPct)), pct: Math.round(P.profitPct * 100) })}</p>${total > P.receiptsLimit ? `<p class="meta">${t("freelance.digitalOnly")}</p>` : ""}`) : "";
+  const rows = STATE.incomeLog.slice(-5).reverse().map((e) => `<div class="meta">${esc(e.client)} · ${inr(e.amount)}</div>`).join("");
+  return `<div class="card freelance"><h3>${t("freelance.title")} <small>${t("freelance.sub")}</small></h3>
+   <div style="display:flex;gap:.5rem;flex-wrap:wrap"><input class="text-input" id="inc-client" placeholder="${t("freelance.clientPh")}" aria-label="${t("freelance.clientPh")}"><input class="text-input" id="inc-amount" type="number" min="0" inputmode="numeric" placeholder="${t("freelance.amountPh")}" aria-label="${t("freelance.amountPh")}"><button type="button" class="btn" data-act="add-income">${t("freelance.add")}</button></div>
+   ${rows}<p><b>${t("freelance.total")}</b> ${inr(total)}</p>${est}
+   <p class="meta">${t("freelance.reminder", { date: dateTxt })}</p></div>`;
+}
+// Item 3: in-app only nudge (no push). Which employer window, if any, is `date` in?
+function employerNudgeKey(date = new Date()) {
+  const m = date.getMonth() + 1;
+  return ["declaration", "proofs"].find((k) => {
+    const { startMonth: a, endMonth: b } = TaxEngine.EMPLOYER_CALENDAR[k];
+    return a <= b ? m >= a && m <= b : m >= a || m <= b;
+  }) || null;
+}
+function employerNudgeCard() {
+  const salaried = STATE.onboarding.employment === "Salaried" || STATE.onboarding.employment === "Mix of these";
+  const k = employerNudgeKey();
+  if (!salaried || !k) return "";
+  return `<div class="card"><h3>${t("nudge." + k + "Title")}</h3><p>${t("nudge." + k + "Body")}</p><p class="meta">${t("nudge.note")}</p></div>`;
+}
+// Item 4: plain answer for salaried users on the default new regime.
+function nothingToDoCard() {
+  const salaried = STATE.onboarding.employment === "Salaried" || STATE.onboarding.employment === "Mix of these";
+  if (STATE.regime !== "new" || !salaried) return "";
+  return `<div class="card"><h3>${t("todo.title")}</h3><p>${t("todo.body", { std: fmtINR(TaxEngine.STANDARD_DEDUCTION.new) })}</p><p class="meta">${t("todo.note")}</p></div>`;
+}
 function renderOverviewView() {
   const cmp = getComparison();
   const saved = computeSavedVsNoDeductions();
@@ -1033,6 +1255,9 @@ function renderOverviewView() {
    <div><span class="eyebrow">${t("overview.timeToInvest")}</span><span class="mid num">${t("overview.daysLabel", { n: daysLeftInFY() })}</span><small>${t("overview.untilMarch")}</small><div class="fy-track" aria-hidden="true"><i style="width:${fyPct() * 100}%"></i></div></div>
   </div>
   ${detectBanner}
+  ${employerNudgeCard()}
+  ${nothingToDoCard()}
+  ${freelanceCard()}
   ${regimeCard}
   <div class="caps">${caps}</div>
   ${STATE.receipts.length === 0 && pending === 0 ? `<div class="empty-note">${t("overview.emptyNote")}</div>` : ""}
@@ -1076,7 +1301,7 @@ function renderReceiptsView() {
   <div class="toolbar">${opts.map(([k, label]) => `<button class="fchip" type="button" data-filter="${k}" aria-pressed="${filter === k}">${label}</button>`).join("")}
   <button class="btn ghost" type="button" style="margin-left:auto" data-act="enter-manually">${t("common.enterManually")}</button></div>
   ${list.length ? `<div class="tbl-wrap"><table><thead><tr><th>${t("receipts.tableDate")}</th><th>${t("receipts.tablePaidTo")}</th><th>${t("receipts.tableCategory")}</th><th>${t("receipts.tableCounts")}</th><th class="r">${t("receipts.tableAmount")}</th><th>${t("receipts.tableState")}</th></tr></thead><tbody>${rows}</tbody></table></div>`
-    : `<div class="empty-note">${t("receipts.emptyFilterNote")}</div>`}
+    : `<div class="empty-note">${t(filter === "all" ? "receipts.emptyAllNote" : "receipts.emptyFilterNote")}</div>`}
   ${DISC}`;
 }
 
@@ -1093,11 +1318,11 @@ function buildReportData(fmtCurrency = fmtINR) {
   const cap126Self = TaxEngine.getSection126SelfCap(STATE.onboarding.section126);
   const cap126Parents = TaxEngine.getSection126ParentsCap(STATE.onboarding.section126);
   const deductionRows = [
-    { sectionNew: "Section 123", sectionOld: "80C", used: cmp.deductionsUsed.s123, cap: TaxEngine.SECTION_CAPS.s123.cap },
-    { sectionNew: "Section 124", sectionOld: "80CCD(1B)", used: cmp.deductionsUsed.s124, cap: TaxEngine.SECTION_CAPS.s124.cap },
-    { sectionNew: "Section 126 · self & family", sectionOld: "80D", used: cmp.deductionsUsed.s126self, cap: cap126Self },
-    { sectionNew: "Section 126 · parents", sectionOld: "80D", used: cmp.deductionsUsed.s126parents, cap: cap126Parents },
-    { sectionNew: "Section 22", sectionOld: "24(b)", used: cmp.deductionsUsed.s22, cap: TaxEngine.SECTION_CAPS.s22.cap },
+    { sectionNew: "Section 123", sectionOld: "80C", plain: t("report.plain.s123"), used: cmp.deductionsUsed.s123, cap: TaxEngine.SECTION_CAPS.s123.cap },
+    { sectionNew: "Section 124", sectionOld: "80CCD(1B)", plain: t("report.plain.s124"), used: cmp.deductionsUsed.s124, cap: TaxEngine.SECTION_CAPS.s124.cap },
+    { sectionNew: "Section 126 · self & family", sectionOld: "80D", plain: t("report.plain.s126"), used: cmp.deductionsUsed.s126self, cap: cap126Self },
+    { sectionNew: "Section 126 · parents", sectionOld: "80D", plain: t("report.plain.s126"), used: cmp.deductionsUsed.s126parents, cap: cap126Parents },
+    { sectionNew: "Section 22", sectionOld: "24(b)", plain: t("report.plain.s22"), used: cmp.deductionsUsed.s22, cap: TaxEngine.SECTION_CAPS.s22.cap },
   ]
     .filter((r) => r.used > 0)
     .map((r) => { const room = Math.max(0, r.cap - r.used); return { ...r, room, hasRoom: room > 0 }; });
@@ -1113,6 +1338,8 @@ function buildReportData(fmtCurrency = fmtINR) {
   if (cmp.deductionsUsed.s126self === 0) missedItems.push(t("report.missedHealthSelf"));
   if (cmp.deductionsUsed.s126parents === 0) missedItems.push(t("report.missedHealthParents"));
   if (cmp.deductionsUsed.s22 === 0 && hasHomeLoan()) missedItems.push(t("report.missedHomeLoan"));
+  if (hasHomeLoan()) missedItems.push(t("report.missedHomeLoanCert"));
+  if (hasRentNoHRA()) missedItems.push(t("report.missedRentNoHra"));
   if (cmp.deductionsUsed.s133 === 0) missedItems.push(t("report.missedDonations"));
   if (cmp.deductionsUsed.s124 === 0) missedItems.push(t("report.missedNps", { amount: fmtCurrency(TaxEngine.SECTION_CAPS.s124.cap) }));
   if (!hasPreventiveCheckup) missedItems.push(t("report.missedPreventiveCheckup", { amount: fmtCurrency(TaxEngine.TAX_CONFIG.cashRules.s126PreventiveCheckupCashCap) }));
@@ -1164,7 +1391,9 @@ function renderReportView() {
     : `<div class="empty-note">${t("report.emptyReport")}</div>`}
   ${data.missedItems.length > 0 ? `<div class="card"><h3>${t("report.missedHeader")}</h3><ul class="missed">${data.missedItems.map((m) => `<li>${ic("dash")}<span>${m}</span></li>`).join("")}</ul></div>` : ""}
   ${postFilingCard()}
+  ${form130Card(getComparison())}
   <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn ghost" type="button" data-act="export-pdf">${ic("down")}${t("report.downloadPdf")}</button><button class="btn ghost" type="button" data-act="export-employer-pack">${ic("down")}${t("report.downloadEmployerPack")}</button><button class="btn ghost" type="button" disabled title="Coming soon">${t("report.shareCA")}</button></div>
+  <div class="card missed-deadline"><h3>${t("report.missedDeadlineTitle")}</h3><p>${t("report.missedDeadlineBody")}</p><p class="meta">${t("report.missedDeadlineNote")}</p></div>
   <p class="meta">${t("report.employerPackNote")}</p>
   ${DISC}</div>`;
 }
@@ -1226,8 +1455,8 @@ function renderReportPDF(data) {
     startY: y, margin: { left: marginX, right: marginX },
     head: [["Regime", "Estimated tax"]],
     body: [
-      ["Old Regime" + (data.regimeComparison.betterRegime === "old" ? " (better)" : ""), fmtRs(data.regimeComparison.oldTax)],
-      ["New Regime" + (data.regimeComparison.betterRegime === "new" ? " (better)" : ""), fmtRs(data.regimeComparison.newTax)],
+      [`Old Regime (${t("report.plain.oldRegime")})` + (data.regimeComparison.betterRegime === "old" ? " (better)" : ""), fmtRs(data.regimeComparison.oldTax)],
+      [`New Regime (${t("report.plain.newRegime")})` + (data.regimeComparison.betterRegime === "new" ? " (better)" : ""), fmtRs(data.regimeComparison.newTax)],
     ],
     theme: "grid", styles: { fontSize: 9 }, headStyles: { fillColor: [40, 40, 40] },
   });
@@ -1238,7 +1467,7 @@ function renderReportPDF(data) {
     doc.autoTable({
       startY: y, margin: { left: marginX, right: marginX },
       head: [["Section (2025 Act)", "Old no.", "Used", "Cap", "Status"]],
-      body: data.deductionRows.map((r) => [r.sectionNew, r.sectionOld, fmtRs(r.used), fmtRs(r.cap), r.hasRoom ? `${fmtRs(r.room)} more room` : "Fully used"]),
+      body: data.deductionRows.map((r) => [`${r.sectionNew} (${r.plain})`, r.sectionOld, fmtRs(r.used), fmtRs(r.cap), r.hasRoom ? `${fmtRs(r.room)} more room` : "Fully used"]),
       theme: "grid", styles: { fontSize: 9 }, headStyles: { fillColor: [40, 40, 40] },
     });
     y = doc.lastAutoTable.finalY + 24;
@@ -1274,17 +1503,17 @@ async function exportPDF() {
 const EMPLOYER_PACK_GROUPS = [
   { group: "s123", label: "Section 123 (80C)" },
   { group: "s124", label: "Section 124 (80CCD(1B))" },
-  { group: "s126self", label: "Section 126 (80D) — self & family" },
-  { group: "s126parents", label: "Section 126 (80D) — parents" },
-  { group: "s22", label: "Section 22 (24(b)) — home loan interest" },
-  { group: "hra", label: "HRA exemption — rent paid" },
-  { group: "s133", label: "Section 133 (80G) — donations" },
+  { group: "s126self", label: "Section 126 (80D)" },
+  { group: "s126parents", label: "Section 126 (80D)" },
+  { group: "s22", label: "Section 22 (24(b))" },
+  { group: "hra", label: "HRA exemption" },
+  { group: "s133", label: "Section 133 (80G)" },
 ];
 function buildEmployerProofPackData() {
   const sections = EMPLOYER_PACK_GROUPS
     .map((g) => ({ ...g, receipts: receiptsForGroup(g.group) }))
     .filter((s) => s.receipts.length > 0)
-    .map((s) => ({ ...s, total: s.receipts.reduce((sum, r) => sum + Number(r.amount || 0), 0) }));
+    .map((s) => ({ ...s, label: `${s.label} (${t("report.plain." + s.group)})`, total: s.receipts.reduce((sum, r) => sum + Number(r.amount || 0), 0) }));
   return {
     title: t("report.employerPackTitle", { fy: FY_LABEL }),
     generatedDate: new Date(),
@@ -1387,6 +1616,9 @@ function renderSettingsView() {
    </section>
    <section class="group" id="s-data"><header><h2>${t("settings.yourDataHeader")}</h2><p>${t("settings.yourDataSub")}</p></header>
     ${row(t("settings.downloadDataLabel"), t("settings.downloadDataHelp"), `<button class="btn ghost" type="button" data-act="export-data">${ic("down")}${t("settings.downloadDataBtn")}</button>`)}
+    ${row(t("storage.backupLabel"), t("storage.backupHelp"), `<button class="btn ghost" type="button" data-act="export-backup">${ic("down")}${t("storage.backupBtn")}</button>`)}
+    ${row(t("storage.restoreLabel"), t("storage.restoreHelp"), `<label class="btn ghost" style="cursor:pointer">${t("storage.restoreBtn")}<input type="file" accept="application/json,.json" data-import-backup hidden></label>`)}
+    ${STATE.storagePersisted === false ? `<p class="meta">${t("storage.notPersisted")}</p>` : ""}
     ${row(t("settings.resetDemoLabel"), t("settings.resetDemoHelp"), `<button class="btn ghost" type="button" data-act="reset-demo">${t("settings.resetDemoBtn")}</button>`)}
     ${row(t("settings.deleteAccountLabel"), t("settings.deleteAccountHelp"), STATE.confirmDelete
       ? `<div class="confirm"><span>${t("settings.deleteConfirmQuestion")}</span><button class="btn danger" type="button" data-act="del-yes">${t("settings.deleteYes")}</button><button class="btn ghost" type="button" data-act="del-no">${t("settings.cancel")}</button></div>`
@@ -1402,6 +1634,10 @@ function renderSettingsView() {
 // data-filter / data-set / data-toggle / data-act, matching the Peacock
 // reference prototypes.
 // ============================================================
+document.addEventListener("change", (e) => {
+  const f = e.target.closest && e.target.closest("[data-import-backup]");
+  if (f && f.files && f.files[0]) { importBackupFile(f.files[0]); f.value = ""; }
+});
 document.addEventListener("click", (e) => {
   const target = e.target.closest("[data-action]");
   if (!target) return;
@@ -1439,6 +1675,9 @@ document.addEventListener("click", (e) => {
     case "use-photo": usePhoto(); break;
     case "enter-manually": enterManually(); break;
     case "save-receipt": saveReceipt(); break;
+    case "save-another": saveReceipt(true); break;
+    case "quick-cat": STATE.reviewDraft.category = target.dataset.value; renderReview(); break;
+    case "same-as-last": Object.assign(STATE.reviewDraft, STATE.lastEntry); renderReview(); break;
     case "discard-receipt": discardReceipt(); break;
     default: break;
   }
@@ -1471,7 +1710,7 @@ document.addEventListener("input", (e) => {
 function resetSettings() { Object.assign(SETTINGS, SETTINGS_DEFAULTS); saveSettings(); applyAppearance(); renderApp(); showToast(t("settings.toastSettingsReset")); }
 function resetDemo() {
   STATE = {
-    screen: "s-onboarding", appView: "overview", onboarding: freshOnboarding(), regime: null, income: null,
+    screen: "s-onboarding", appView: "overview", onboarding: freshOnboarding(), regime: null, income: null, incomeLog: [], hraClaimed: "", form130: { gross: "", s123: "", s126: "", tds: "" },
     autoDetectEnabled: false, receipts: [], pendingDetected: [], receiptFilter: "all", reviewDraft: null,
     reviewDraftSource: null, camera: { phase: "idle", photo: null }, confirmDelete: false, confirmRegimeOptOut: false,
     glossaryOpen: null, glossaryQuery: "", familyMembers: [], toast: null, dpdpNoticeOpen: false,
@@ -1502,6 +1741,12 @@ document.addEventListener("click", (e) => {
   if (!a) return;
   const act = a.dataset.act;
   if (act === "hide") { SETTINGS.hideAmounts = !SETTINGS.hideAmounts; saveSettings(); applyAppearance(); renderApp(); showToast(SETTINGS.hideAmounts ? t("settings.toastAmountsHidden") : t("settings.toastAmountsShown")); }
+  if (act === "add-income") {
+    const amt = Math.round(Number(el("inc-amount").value));
+    if (amt > 0) { STATE.incomeLog.push({ client: el("inc-client").value.trim() || t("freelance.unnamed"), amount: amt }); renderApp(); }
+  }
+  if (act === "check-hra") { STATE.hraClaimed = el("hra-claimed").value.trim(); renderApp(); }
+  if (act === "check-form130") { ["gross", "s123", "s126", "tds"].forEach((k) => { STATE.form130[k] = el("f130-" + k).value.trim(); }); renderApp(); }
   if (act === "goto-camera") gotoCamera();
   if (act === "enter-manually") enterManually();
   if (act === "goto-quickconfirm") show("s-quickconfirm");
@@ -1516,6 +1761,7 @@ document.addEventListener("click", (e) => {
   if (act === "reset-settings") resetSettings();
   if (act === "reset-demo") resetDemo();
   if (act === "export-data") exportData();
+  if (act === "export-backup") exportBackup();
   if (act === "del") { STATE.confirmDelete = true; renderApp(); }
   if (act === "del-no") { STATE.confirmDelete = false; renderApp(); }
   if (act === "regime-optout-yes") { STATE.regime = STATE.confirmRegimeOptOut; STATE.confirmRegimeOptOut = false; renderApp(); }
@@ -1531,6 +1777,7 @@ document.addEventListener("click", (e) => {
     Object.assign(SETTINGS, SETTINGS_DEFAULTS);
     applyAppearance();
     resetDemo();
+    wipeStoredData();
     showToast(t("settings.toastDeleteDemo"));
   }
 });
@@ -1612,10 +1859,13 @@ function loadSharedReceiptIfAny() {
 }
 
 // ---------- Init ----------
-function init() {
+async function init() {
   applyAppearance();
   registerServiceWorker();
   loadSharedReceiptIfAny();
+  const restored = typeof indexedDB === "undefined" ? false : await loadStoredState();
+  checkStorageHealth();
+  if (restored && STATE.receipts.length > 0 && !PENDING_SHARED_PHOTO) { showApp("overview"); return; }
   show("s-onboarding");
 }
 document.addEventListener("DOMContentLoaded", init);

@@ -487,6 +487,8 @@
       "clients": "Clients",
       "queue": "Review queue",
       "deadlines": "Deadlines",
+      "rules": "Rules",
+      "season": "Season readiness",
       "reports": "Reports",
       "settings": "Settings"
     },
@@ -643,7 +645,12 @@
       "footerNote": "Approving marks the receipt as checked by your firm. It does not submit anything to the Income Tax Department. Keep the client's original receipt/proof for filing — this workspace doesn't store legal proof of payment.",
       "cashFlag126": "Cash — not deductible",
       "cashFlag133": "Cash over ₹2,000",
-      "capFlag": "Section already at its cap"
+      "capFlag": "Section already at its cap",
+      "showAll": "Show all ({{n}})",
+      "exceptionsOnly": "Exceptions only",
+      "hiddenNote": "{{n}} receipts raise no flags and are hidden. They are not approved; you still approve them yourself. No flags means no flagged field, no cash or over-cap flag, and read confidence at or above your setting.",
+      "looksFine": "No flags",
+      "onlyFine": "Nothing needs attention. {{n}} receipts raise no flags but are still waiting for your approval."
     },
     "deadlines": {
       "title": "Deadlines",
@@ -747,6 +754,62 @@
       "donation": "Donation receipts with the charity's details — Section 133 (80G)",
       "income": "Invoices or payment records for the year (self-employed income)"
     },
+    "rules": {
+      "title": "Chasing rules",
+      "sub": "Plain if-then rules for following up. Nothing runs by itself and nothing is sent: each match gives you a WhatsApp link with the message ready, and you press send.",
+      "countMatches": "{{n}} matching",
+      "none": "No client matches this rule right now.",
+      "open": "Ask on WhatsApp",
+      "followUp": "Follow up on WhatsApp",
+      "tell": "Tell client on WhatsApp",
+      "windowLabel": "Due within",
+      "windowDays": "{{n}} days",
+      "note": "Rules and day counts come from one settings block in the code. Matches use sample data and each client's likely return due date, which the CA confirms.",
+      "missingDoc": {
+        "name": "Missing document, due date near",
+        "text": "If a client has not sent a document and their likely return is due within {{n}} days, prepare a reminder.",
+        "row": "{{docs}} · return due in {{days}} days",
+        "rowPassed": "{{docs}} · due date passed {{days}} days ago",
+        "message": "Hi {{name}}, a note on your {{fy}} tax records: we do not yet have {{docs}}. Your return is likely due around {{date}}, to be confirmed. Please send it when you can, or tell me if it is not applicable."
+      },
+      "unanswered": {
+        "name": "Request unanswered, follow up",
+        "text": "If a document request has had no reply for {{n}} days, prepare a follow-up.",
+        "row": "{{doc}} · asked {{days}} days ago",
+        "message": "Hi {{name}}, following up on my message of {{days}} days ago about {{docs}} for your {{fy}} records. If you have already sent it, please ignore this note."
+      },
+      "flagged": {
+        "name": "Receipt flagged, tell the client",
+        "text": "If a receipt fails a rule check, prepare a note to the client saying what was flagged.",
+        "row": "{{receipt}} · {{flag}}",
+        "message": "Hi {{name}}, a note on your {{fy}} records: your receipt \"{{receipt}}\" was flagged by an automated check ({{flag}}). This is not a decision on your claim. Please confirm the details or send a clearer copy."
+      }
+    },
+    "season": {
+      "title": "Season readiness",
+      "sub": "Which clients are still missing documents, by likely return due date. Readiness is an estimate from the documents on file.",
+      "sample": "Sample data",
+      "filterAll": "All clients",
+      "filterDue": "Return due {{date}}",
+      "kpiReady": "Ready",
+      "kpiMissing": "Missing documents",
+      "kpiDocs": "Documents outstanding",
+      "kpiReadiness": "Overall readiness (estimate)",
+      "colClient": "Client",
+      "colReturn": "Likely return",
+      "colDays": "Days to due date",
+      "colReadiness": "Readiness (estimate)",
+      "colMissing": "Missing documents",
+      "none": "Every client in this view has sent all documents.",
+      "csv": "Export CSV",
+      "pdf": "Export PDF",
+      "csvDone": "CSV downloaded",
+      "failed": "Could not create the PDF. Check your connection and try again.",
+      "title2": "Season readiness report, {{fy}}",
+      "generated": "Generated {{time}} by {{who}} from sample data.",
+      "summary": "{{ready}} of {{total}} clients have sent everything; {{docs}} documents outstanding across {{missing}} clients. Readiness percentages are estimates from documents on file, and due dates are likely dates the CA confirms.",
+      "footer": "Informational estimate — not tax advice."
+    },
     "bulk": {
       "title": "Ask clients for a missing document",
       "sub": "Pick a document to see who has not sent it yet.",
@@ -793,6 +856,27 @@
       "detail": "Landlord PAN not on record. It is generally needed when annual rent is above {{threshold}} (estimate of the current rule). Rent on record: {{rent}} a year. Ask the client; TaxPlot does not check or submit it.",
       "ok": "Landlord PAN on file for the rent recorded ({{rent}} a year).",
       "note": "Rent and landlord PAN on record are sample data here. The threshold is an estimate of the current rule."
+    },
+    "readiness": {
+      "button": "Review record (PDF)",
+      "title": "Review record — {{name}} — {{fy}}",
+      "generated": "Generated {{time}} by {{who}}",
+      "intro": "TaxPlot's own record of what was reviewed for this client in this workspace, and when. It is not an audit, not a filed return and not tax advice.",
+      "logHeader": "Review log",
+      "logEmpty": "No review activity recorded yet.",
+      "colWhen": "When",
+      "colWho": "Who",
+      "colAction": "Action",
+      "colItem": "Receipt",
+      "colReason": "Reason",
+      "openHeader": "Still waiting for review: {{n}}",
+      "openNone": "Nothing is waiting for review.",
+      "flagsHeader": "Items marked for a second look",
+      "flagsNone": "No regime or landlord-PAN flags on record.",
+      "flagRegime": "Regime on record is {{elected}}; the estimate from logged receipts is lower under {{better}}.",
+      "flagLandlord": "Landlord PAN not on record for annual rent of {{rent}}.",
+      "footer": "Informational estimate — not tax advice. TaxPlot's own record of review actions in this workspace; not an audit and not a filed return. Keep the client's original receipts and proofs for filing.",
+      "failed": "Could not build the PDF — check your connection and try again."
     }
   }
 }

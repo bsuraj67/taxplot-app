@@ -102,7 +102,7 @@ const CA_ELECTED = { "Ananya Rao": "Old", "Farah Khan": "Old", "Meera Iyer": "Ne
 var C = CA_CLIENTS_RAW.map(([name, pan, type, inc, s123, s124, s126, s22, hra, rc, rev, last], i) => ({
   id: i + 1, elected: CA_ELECTED[name] || "New", s133: CA_DONATIONS[name] || 0, rent: (CA_RENT[name] || [0, false])[0], landlordPan: (CA_RENT[name] || [0, false])[1], name, pan: pan + (1000 + ((i * 397) % 9000)) + "K", type, inc, s123, s124, s126, s126p: CA_PARENTS_126[name] || 0, s22, hra, rc, rev, last,
 }));
-const Q = [
+var Q = [
   { c: 3, who: "Health insurance premium", sec: "126", amt: 12000, conf: 62, d: "2026-09-25", field: "Amount", pay: "cash" },
   { c: 1, who: "Home loan interest · H1", sec: "22", amt: 96000, conf: 71, d: "2026-09-30", field: "Amount" },
   { c: 6, who: "ELSS SIP statement", sec: "123", amt: 24000, conf: 88, d: "2026-09-30", field: "Date" },
@@ -125,6 +125,10 @@ function caCapFlag(q) {
   const caps = { 123: ["s123", TaxEngine.SECTION_CAPS.s123.cap], 124: ["s124", TaxEngine.SECTION_CAPS.s124.cap], 126: q.parents ? ["s126p", TaxEngine.SECTION_CAPS.s126Parents.capUnder60] : ["s126", TaxEngine.SECTION_CAPS.s126Self.capUnder60], 22: ["s22", TaxEngine.SECTION_CAPS.s22.cap] }[q.sec];
   return c && caps && c[caps[0]] >= caps[1] ? t("queue.capFlag") : "";
 }
+// "Looks fine" = raises no flags under the rule checks (confidence at/above the user's setting, nothing to verify, no cash/over-cap flag).
+// It only hides the row by default; the receipt stays open until the CA approves it. Nothing is auto-approved.
+function caQFine(q) { return q.conf >= CS.lowConf && !q.field && !caRuleFlag(q); }
+function caQVisible() { const open = Q.filter((q) => q.state === "open"); return caQShowAll ? open : open.filter((q) => !caQFine(q)); }
 function caRuleFlag(q) { return caCashFlag(q) || caCapFlag(q); }
 function caCashFlag(q) {
   if (q.pay !== "cash") return "";
@@ -224,10 +228,11 @@ function mm(u, cap) { const st = u >= cap ? "done" : u === 0 ? "none" : "room"; 
 const CA_DISC = `<p class="disc">${ic("info")}${t("common.disclaimer")}</p>`;
 
 // ---------- state ----------
-const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
-const AUDIT = [];
-let caReason = "";
+const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["rules", "msg", t("nav.rules")], ["season", "report", t("nav.season")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
+var AUDIT = [];
+var caReason = "";
 const CA_USER = "Ritu M.";
+let caQShowAll = false;
 let caBulk = "", caRoom = "", caView = "clients", caSel = 1, caFilt = "all", caSortKey = "name", caSortDir = 1, caQuery = "", caQSel = 1;
 
 // ---------- views ----------
@@ -239,6 +244,113 @@ function caBulkPanel() {
   const sel = counts.find(([k]) => k === caBulk);
   const list = !sel ? "" : sel[1].length ? `<p class="muted" style="font-size:.84rem">${t("bulk.listHeader", { n: sel[1].length, doc: t("docs." + sel[0]) })}</p><div class="bulk-list">${sel[1].map((c) => `<div class="row"><span>${c.name}</span><a class="btn ghost sm" href="${caWaLink(c, [sel[0]])}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("bulk.ask")}</a></div>`).join("")}</div><p class="muted" style="font-size:.78rem">${t("bulk.note")}</p>` : `<p class="muted">${t("bulk.none")}</p>`;
   return `<section class="cardx bulk"><header><h2>${t("bulk.title")}</h2><p>${t("bulk.sub")}</p></header><div class="fbar">${chips}</div>${list}</section>`;
+}
+// ---------- Chasing rules (Turia research item 1) ----------
+// CONFIG BLOCK: every rule and day count lives here, never in the views. Rules are plain
+// if-then checks over data already on screen. Nothing runs on a timer and nothing is sent:
+// a match only produces a wa.me link the CA opens and sends. (Tax figures stay in TAX_CONFIG.)
+const CA_RULES_CONFIG = {
+  order: ["missingDoc", "unanswered", "flagged"],
+  missingDoc: { on: true, withinDays: 60, windowOptions: [30, 60, 90, 180, 365] },
+  unanswered: { on: true, afterDays: 3 },
+  flagged: { on: true },
+};
+// SAMPLE data (fictional): document requests the CA has already sent, [client, document, days ago].
+// A request only counts while that document is still missing.
+const CA_REQUESTS_SAMPLE = [["Arjun Mehta", "donation", 5], ["Rohan Gupta", "nps", 4], ["Imran Sheikh", "rent", 3], ["Meera Iyer", "form130", 2]];
+let caRuleWin = null, caSeasonFilt = "all";
+function caRuleWindow() { return caRuleWin || CA_RULES_CONFIG.missingDoc.withinDays; }
+function caClientDays(c) { const dl = TaxEngine.DEADLINES.find((x) => x.key === clientReturn(c).key); return dl ? caDays(dl) : null; }
+function caRuleMatches(id) {
+  const cfg = CA_RULES_CONFIG[id], fy = TaxEngine.FY_LABEL;
+  if (!cfg || !cfg.on) return [];
+  if (id === "missingDoc") {
+    return C.map((c) => ({ c, days: caClientDays(c), missing: clientDocs(c).missing })).filter((m) => m.missing.length && m.days !== null && m.days <= caRuleWindow())
+      .sort((a, b) => a.days - b.days).map((m) => {
+        const short = m.missing.map((d) => t("docs." + d).split(/ [(—]/)[0]).join(", ");
+        const docs = m.missing.map((d) => t("docs." + d)).join("; ");
+        const msg = t("rules.missingDoc.message", { name: m.c.name.split(" ")[0], fy, docs, date: clientReturn(m.c).date });
+        return { c: m.c, text: m.days < 0 ? t("rules.missingDoc.rowPassed", { docs: short, days: -m.days }) : t("rules.missingDoc.row", { docs: short, days: m.days }), link: "https://wa.me/?text=" + encodeURIComponent(msg), btn: "open" };
+      });
+  }
+  if (id === "unanswered") {
+    return CA_REQUESTS_SAMPLE.map(([name, doc, ago]) => ({ c: C.find((x) => x.name === name), doc, ago })).filter((r) => r.c && r.ago >= cfg.afterDays && clientDocs(r.c).missing.includes(r.doc))
+      .sort((a, b) => b.ago - a.ago).map((r) => ({ c: r.c, text: t("rules.unanswered.row", { doc: t("docs." + r.doc).split(/ [(—]/)[0], days: r.ago }), link: "https://wa.me/?text=" + encodeURIComponent(t("rules.unanswered.message", { name: r.c.name.split(" ")[0], days: r.ago, docs: t("docs." + r.doc), fy })), btn: "followUp" }));
+  }
+  if (id === "flagged") {
+    return Q.filter((q) => q.state === "open" && caRuleFlag(q)).map((q) => { const c = C.find((x) => x.id === q.c); return { c, text: t("rules.flagged.row", { receipt: q.who, flag: caRuleFlag(q) }), link: "https://wa.me/?text=" + encodeURIComponent(t("rules.flagged.message", { name: c.name.split(" ")[0], fy, receipt: q.who, flag: caRuleFlag(q) })), btn: "tell" }; });
+  }
+  return [];
+}
+function caRulesView() {
+  const win = CA_RULES_CONFIG.missingDoc.windowOptions.map((n) => `<button class="fchip" type="button" data-rulewin="${n}" aria-pressed="${caRuleWindow() === n}">${t("rules.windowDays", { n })}</button>`).join("");
+  const params = { missingDoc: { n: caRuleWindow() }, unanswered: { n: CA_RULES_CONFIG.unanswered.afterDays }, flagged: {} };
+  const cards = CA_RULES_CONFIG.order.filter((id) => CA_RULES_CONFIG[id] && CA_RULES_CONFIG[id].on).map((id) => {
+    const hits = caRuleMatches(id);
+    const rows = hits.length ? hits.map((h) => `<div class="row"><div><span class="lbl">${caEsc(h.c.name)}</span><p class="help">${caEsc(h.text)}</p></div><a class="btn ghost sm" href="${h.link}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("rules." + h.btn)}</a></div>`).join("") : `<p class="muted">${t("rules.none")}</p>`;
+    return `<section class="cardx" data-rule="${id}"><header><h2>${t("rules." + id + ".name")} <span class="pill">${t("rules.countMatches", { n: hits.length })}</span></h2><p>${t("rules." + id + ".text", params[id])}</p></header>${id === "missingDoc" ? `<div class="fbar"><span class="muted" style="font-size:.8rem">${t("rules.windowLabel")}</span>${win}</div>` : ""}${rows}</section>`;
+  }).join("");
+  return `<div class="ph"><h1>${t("rules.title")}</h1><span class="pill">${t("common.sampleData")}</span></div><p class="muted" style="font-size:.86rem">${t("rules.sub")}</p>${cards}<div class="note-box">${ic("info")}<span>${t("rules.note")}</span></div>${CA_DISC}`;
+}
+
+// ---------- Season readiness report (Turia research item 4) ----------
+// Clients still missing documents, grouped by likely return due date. Readiness % is an estimate
+// (documents on file / documents needed), shown as such. CSV and PDF carry the disclaimer footer.
+function caSeasonRows() {
+  return C.filter((c) => caSeasonFilt === "all" || clientReturn(c).key === caSeasonFilt).map((c) => {
+    const d = clientDocs(c), r = clientReturn(c);
+    return { c, form: r.form, date: r.date, days: caClientDays(c), got: d.got.length, need: d.need.length, pct: d.need.length ? Math.round((100 * d.got.length) / d.need.length) : 100, missing: d.missing.map((k) => t("docs." + k).split(/ [(—]/)[0]) };
+  }).sort((a, b) => (a.days - b.days) || (a.pct - b.pct) || a.c.name.localeCompare(b.c.name));
+}
+function buildSeasonReportData(now = Date.now()) {
+  const rows = caSeasonRows(), out = rows.filter((r) => r.missing.length);
+  const docs = out.reduce((n, r) => n + r.missing.length, 0);
+  const time = new Date(now).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return {
+    title: t("season.title2", { fy: TaxEngine.FY_LABEL }), generated: t("season.generated", { time, who: CA_USER }),
+    summary: t("season.summary", { ready: rows.length - out.length, total: rows.length, docs, missing: out.length }),
+    head: [t("season.colClient"), t("season.colReturn"), t("season.colDays"), t("season.colReadiness"), t("season.colMissing")],
+    body: out.map((r) => [r.c.name, `${r.form} · ${r.date}`, r.days === null ? "" : String(r.days), r.pct + "%", r.missing.join("; ")]),
+    footer: t("season.footer"), filename: "TaxPlot_Season_Readiness_" + TaxEngine.FY_LABEL.replace(/[^0-9A-Za-z]+/g, "-") + ".",
+  };
+}
+function caCsvCell(v) { let s = String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function caSeasonCsv(data) { return [[data.title], [data.generated], [data.summary], [], data.head, ...data.body, [], [data.footer]].map((r) => r.map(caCsvCell).join(",")).join("\r\n") + "\r\n"; }
+function caExportSeasonCsv() {
+  const data = buildSeasonReportData();
+  const url = URL.createObjectURL(new Blob(["﻿" + caSeasonCsv(data)], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = data.filename + "csv"; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000); caToast(t("season.csvDone"));
+}
+async function caExportSeasonPdf() {
+  const data = buildSeasonReportData();
+  try {
+    if (!(window.jspdf && window.jspdf.jsPDF)) await caLoadScript(CA_PDF_LIBS.jspdf);
+    if (!(window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable)) await caLoadScript(CA_PDF_LIBS.autotable);
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "a4" });
+    let y = 50;
+    doc.setFontSize(16); doc.setFont(undefined, "bold"); doc.text(data.title, 40, y); y += 20;
+    doc.setFontSize(9); doc.setFont(undefined, "normal"); doc.text(data.generated, 40, y); y += 16;
+    const sm = doc.splitTextToSize(data.summary, 515); doc.text(sm, 40, y); y += sm.length * 12 + 10;
+    doc.autoTable({ startY: y, margin: { left: 40, right: 40 }, head: [data.head], body: data.body, theme: "grid", styles: { fontSize: 8 }, headStyles: { fillColor: [40, 40, 40] } });
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(data.footer, 40, 810, { maxWidth: 515 }); doc.setTextColor(0); }
+    doc.save(data.filename + "pdf");
+  } catch (e) { console.error("Season readiness PDF failed:", e); caToast(t("season.failed")); }
+}
+function caSeasonView() {
+  const rows = caSeasonRows(), out = rows.filter((r) => r.missing.length), docs = out.reduce((n, r) => n + r.missing.length, 0);
+  const need = rows.reduce((n, r) => n + r.need, 0), got = rows.reduce((n, r) => n + r.got, 0);
+  const f = [["all", t("season.filterAll")], ["itr12", t("season.filterDue", { date: caDueDate("itr12") })], ["itr34", t("season.filterDue", { date: caDueDate("itr34") })]];
+  const kpi = (l, v) => `<div class="kpi"><span class="eyebrow">${l}</span><b class="num">${v}</b></div>`;
+  const dayTxt = (r) => (r.days === null ? "" : r.days < 0 ? t("deadlines.passed") : t("dash.daysLabel", { n: r.days }));
+  return `<div class="ph"><h1>${t("season.title")}</h1><span class="pill">${t("season.sample")}</span><button class="btn ghost" type="button" data-season-export="csv">${ic("down")}${t("season.csv")}</button><button class="btn" type="button" data-season-export="pdf">${ic("down")}${t("season.pdf")}</button></div>
+  <p class="muted" style="font-size:.86rem">${t("season.sub")}</p>
+  <div class="fbar">${f.map(([k, l]) => `<button class="fchip" type="button" data-season="${k}" aria-pressed="${caSeasonFilt === k}">${l}</button>`).join("")}</div>
+  <div class="kpis">${kpi(t("season.kpiReady"), rows.length - out.length + " / " + rows.length)}${kpi(t("season.kpiMissing"), out.length)}${kpi(t("season.kpiDocs"), docs)}${kpi(t("season.kpiReadiness"), (need ? Math.round((100 * got) / need) : 100) + "%")}</div>
+  ${out.length ? `<div class="grid" style="max-height:none"><table><thead><tr><th>${t("season.colClient")}</th><th>${t("season.colReturn")}</th><th class="r">${t("season.colDays")}</th><th class="r">${t("season.colReadiness")}</th><th>${t("season.colMissing")}</th></tr></thead><tbody>${out.map((r) => `<tr><td class="cname">${caEsc(r.c.name)}</td><td>${r.form} · ${r.date}</td><td class="r num">${r.days === null ? "" : r.days}</td><td class="r num">${r.pct}%</td><td>${caEsc(r.missing.join("; "))}</td></tr>`).join("")}</tbody></table></div>
+  <div class="cards" role="list" aria-label="${t("season.title")}">${out.map((r) => `<article class="ccard" role="listitem"><div class="h"><b>${caEsc(r.c.name)}</b><span class="num">${r.pct}%</span></div><span class="sub">${r.form} · ${r.date} · ${dayTxt(r)}</span><span class="muted sub">${caEsc(r.missing.join("; "))}</span></article>`).join("")}</div>` : `<p class="muted">${t("season.none")}</p>`}
+  ${CA_DISC}`;
 }
 // ---------- "Room left" campaign (NEXT_STEPS 9.7) ----------
 // Per-client room under each section, one factual nudge each (or one generic message for all).
@@ -315,7 +427,7 @@ function caDetail() {
    ${items.length ? caReasonField() + items.map(caRvCard).join("") : `<p class="muted" style="font-size:.84rem">${t("detail.nothingToReview")}</p>`}</div>
    ${caActivity(c.id, 5)}
    <div style="display:grid;gap:.3rem"><label class="eyebrow" for="cnote">${t("detail.privateNoteLabel")}</label><textarea id="cnote" placeholder="${t("detail.privateNotePlaceholder")}"></textarea></div>
-   <div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn" type="button" data-toast="${t("detail.exportSummaryToast")}">${ic("down")}${t("detail.exportSummary")}</button><button class="btn ghost" type="button" data-evidence="${c.id}">${ic("down")}${t("evidence.button")}</button>${clientDocs(c).missing.length ? `<a class="btn ghost" href="${caWaLink(c, clientDocs(c).missing)}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("detail.askClient")}</a>` : `<button class="btn ghost" type="button" data-toast="${t("detail.askClientToast")}">${ic("msg")}${t("detail.askClient")}</button>`}</div>
+   <div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn" type="button" data-toast="${t("detail.exportSummaryToast")}">${ic("down")}${t("detail.exportSummary")}</button><button class="btn ghost" type="button" data-evidence="${c.id}">${ic("down")}${t("evidence.button")}</button><button class="btn ghost" type="button" data-readiness="${c.id}">${ic("down")}${t("readiness.button")}</button>${clientDocs(c).missing.length ? `<a class="btn ghost" href="${caWaLink(c, clientDocs(c).missing)}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("detail.askClient")}</a>` : `<button class="btn ghost" type="button" data-toast="${t("detail.askClientToast")}">${ic("msg")}${t("detail.askClient")}</button>`}</div>
    <p class="muted" style="font-size:.76rem">${t("detail.footerNote")}</p>
   </aside>`;
 }
@@ -339,6 +451,39 @@ function buildEvidencePackData(c) {
   const rows = [["123", "s123", c.s123], ["124", "s124", c.s124], ["126", "s126self", c.s126], ["126", "s126parents", c.s126p], ["22", "s22", c.s22], ["133", "s133", c.s133]];
   const sections = rows.filter((r) => r[2] > 0).map(([n, key, amount]) => ({ label: `${caEvSecName(n)} (${t("evidence.plain." + key)})`, amount, lastUpload: c.last }));
   return { title: t("evidence.title", { name: c.name, fy: TaxEngine.FY_LABEL }), intro: t("evidence.intro"), sections, empty: t("evidence.empty"), footer: t("evidence.footer"), filename: "TaxPlot_Evidence_Pack_" + c.name.replace(/\W+/g, "_") + ".pdf" };
+}
+// ---------- Review record (research item 8): dated record of review actions for one client ----------
+function buildReadinessRecordData(c, now = Date.now()) {
+  const fmt = (ms) => new Date(ms).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const log = AUDIT.filter((a) => a.c === c.id).map((a) => ({ when: fmt(a.at), who: a.user, action: t("review.act." + a.type), item: `${a.what} (${caEvSecName(a.sec)})`, reason: a.reason || "" }));
+  const open = Q.filter((q) => q.c === c.id && q.state === "open").map((q) => `${q.who} — ${caEvSecName(q.sec)} — Rs. ${Math.round(q.amt).toLocaleString("en-IN")}`);
+  const flags = [];
+  const ef = caElectionFlag(c); if (ef) flags.push(t("readiness.flagRegime", { elected: c.elected, better: ef.better }));
+  if (caLandlordFlag(c)) flags.push(t("readiness.flagLandlord", { rent: "Rs. " + Math.round(c.rent).toLocaleString("en-IN") }));
+  return { title: t("readiness.title", { name: c.name, fy: TaxEngine.FY_LABEL }), generated: t("readiness.generated", { time: fmt(now), who: CA_USER }), intro: t("readiness.intro"), log, logEmpty: t("readiness.logEmpty"), open, openHeader: t("readiness.openHeader", { n: open.length }), openNone: t("readiness.openNone"), flags, flagsNone: t("readiness.flagsNone"), footer: t("readiness.footer"), filename: "TaxPlot_Review_Record_" + c.name.replace(/\W+/g, "_") + ".pdf" };
+}
+async function caExportReadinessRecord(id) {
+  const c = C.find((x) => x.id === id); if (!c) return;
+  const data = buildReadinessRecordData(c);
+  try {
+    if (!(window.jspdf && window.jspdf.jsPDF)) await caLoadScript(CA_PDF_LIBS.jspdf);
+    if (!(window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable)) await caLoadScript(CA_PDF_LIBS.autotable);
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "a4" });
+    let y = 50;
+    doc.setFontSize(16); doc.setFont(undefined, "bold"); doc.text(data.title, 40, y); y += 20;
+    doc.setFontSize(9); doc.setFont(undefined, "normal"); doc.text(data.generated, 40, y); y += 16;
+    const intro = doc.splitTextToSize(data.intro, 515); doc.text(intro, 40, y); y += intro.length * 12 + 10;
+    doc.setFont(undefined, "bold"); doc.text(t("readiness.logHeader"), 40, y); doc.setFont(undefined, "normal"); y += 6;
+    if (!data.log.length) { y += 12; doc.text(data.logEmpty, 40, y); y += 16; }
+    else { doc.autoTable({ startY: y, margin: { left: 40, right: 40 }, head: [[t("readiness.colWhen"), t("readiness.colWho"), t("readiness.colAction"), t("readiness.colItem"), t("readiness.colReason")]], body: data.log.map((r) => [r.when, r.who, r.action, r.item, r.reason]), theme: "grid", styles: { fontSize: 8 }, headStyles: { fillColor: [40, 40, 40] } }); y = doc.lastAutoTable.finalY + 16; }
+    doc.setFont(undefined, "bold"); doc.text(data.openHeader, 40, y); doc.setFont(undefined, "normal"); y += 14;
+    (data.open.length ? data.open : [data.openNone]).forEach((l) => { const w = doc.splitTextToSize(l, 515); doc.text(w, 40, y); y += w.length * 12; });
+    y += 8; doc.setFont(undefined, "bold"); doc.text(t("readiness.flagsHeader"), 40, y); doc.setFont(undefined, "normal"); y += 14;
+    (data.flags.length ? data.flags : [data.flagsNone]).forEach((l) => { const w = doc.splitTextToSize(l, 515); doc.text(w, 40, y); y += w.length * 12; });
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(data.footer, 40, 810, { maxWidth: 515 }); doc.setTextColor(0); }
+    doc.save(data.filename);
+  } catch (e) { console.error("Readiness record PDF failed:", e); caToast(t("readiness.failed")); }
 }
 function caLoadScript(src) {
   return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement("script"); s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error("load failed " + src)); document.head.appendChild(s); });
@@ -376,17 +521,20 @@ const CA_VIEWS = {
     <section class="cardx"><header><h2>${t("dash.regimePicture")}</h2><p>${t("dash.regimePictureSub")}</p></header><div class="row"><div><span class="lbl">${t("dash.newRegimeLower")}</span><p class="help">${C.filter((c) => c.rc && regimeForClient(c).better === "New").map((c) => c.name.split(" ")[0]).join(", ") || t("dash.noneYet")}</p></div><b class="num">${C.filter((c) => c.rc && regimeForClient(c).better === "New").length}</b></div><div class="row"><div><span class="lbl">${t("dash.oldRegimeLower")}</span><p class="help">${C.filter((c) => c.rc && regimeForClient(c).better === "Old").map((c) => c.name.split(" ")[0]).join(", ") || t("dash.noneYet")}</p></div><b class="num">${C.filter((c) => c.rc && regimeForClient(c).better === "Old").length}</b></div></section>`, detail: false };
   },
   queue() {
-    const open = Q.filter((q) => q.state === "open");
+    const all = Q.filter((q) => q.state === "open"), open = caQVisible(), fine = all.filter(caQFine).length;
     return { main: `<div class="ph"><h1>${t("queue.title")}</h1><span class="muted" style="font-size:.85rem">${CS.shortcuts ? t("queue.shortcutsHint") : ""}</span></div>
-    ${open.length ? caReasonField() : ""}
+    ${all.length ? caReasonField() : ""}
+    ${fine ? `<div class="fbar"><button class="fchip" type="button" data-qall="1" aria-pressed="${caQShowAll}">${caQShowAll ? t("queue.exceptionsOnly") : t("queue.showAll", { n: all.length })}</button>${caQShowAll ? "" : `<span class="muted" style="font-size:.8rem">${t("queue.hiddenNote", { n: fine })}</span>`}</div>` : ""}
     <div class="grid"><table><thead><tr><th>${t("queue.colClient")}</th><th>${t("queue.colReceipt")}</th><th>${t("queue.colCounts")}</th><th class="r">${t("queue.colAmount")}</th><th>${t("queue.colConfidence")}</th><th>${t("queue.colCheck")}</th><th>${t("queue.colUploaded")}</th><th>${t("queue.colAction")}</th></tr></thead><tbody>
-    ${open.length ? open.map((q) => `<tr data-qrow="${q.id}" aria-selected="${caQSel === q.id}"><td class="cname">${C.find((c) => c.id === q.c).name}</td><td>${q.who}</td><td>${caSec(q.sec)}</td><td class="r num">${caInr(q.amt)}</td><td><span class="conf ${q.conf < CS.lowConf ? "low" : ""}">${q.conf}%</span></td><td>${caRuleFlag(q) ? chip("check", caRuleFlag(q)) : q.field ? chip("check", q.field) : "<span class='muted'>–</span>"}</td><td class="num muted">${new Date(q.d).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</td><td><div style="display:flex;gap:.3rem"><button class="btn sm" type="button" data-q="approve" data-id="${q.id}">${t("review.approve")}</button><button class="btn ghost sm" type="button" data-q="query" data-id="${q.id}">${t("review.query")}</button></div></td></tr>`).join("") : `<tr><td colspan="8" style="text-align:center;padding:2rem">${chip("done", t("queue.queueClear"))}</td></tr>`}
+    ${open.length ? open.map((q) => `<tr data-qrow="${q.id}" aria-selected="${caQSel === q.id}"><td class="cname">${C.find((c) => c.id === q.c).name}</td><td>${q.who}</td><td>${caSec(q.sec)}</td><td class="r num">${caInr(q.amt)}</td><td><span class="conf ${q.conf < CS.lowConf ? "low" : ""}">${q.conf}%</span></td><td>${caRuleFlag(q) ? chip("check", caRuleFlag(q)) : q.field ? chip("check", q.field) : caQFine(q) ? chip("done", t("queue.looksFine")) : "<span class='muted'>–</span>"}</td><td class="num muted">${new Date(q.d).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</td><td><div style="display:flex;gap:.3rem"><button class="btn sm" type="button" data-q="approve" data-id="${q.id}">${t("review.approve")}</button><button class="btn ghost sm" type="button" data-q="query" data-id="${q.id}">${t("review.query")}</button></div></td></tr>`).join("") : `<tr><td colspan="8" style="text-align:center;padding:2rem">${chip("done", fine ? t("queue.onlyFine", { n: fine }) : t("queue.queueClear"))}</td></tr>`}
     </tbody></table></div>
-    <div class="cards" role="list" aria-label="${t("queue.title")}">${open.length ? open.map((q) => `<article class="ccard" role="listitem" data-qrow="${q.id}" aria-current="${caQSel === q.id}"><div class="h"><b>${C.find((c) => c.id === q.c).name}</b><span class="num">${caInr(q.amt)}</span></div><div class="sub">${q.who}</div><div class="muted sub">${caSec(q.sec)} · ${new Date(q.d).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · <span class="conf ${q.conf < CS.lowConf ? "low" : ""}">${t("review.readPct", { conf: q.conf })}</span></div>${caRuleFlag(q) ? `<div>${chip("check", caRuleFlag(q))}</div>` : q.field ? `<div>${chip("check", q.field)}</div>` : ""}<div class="acts"><button class="btn sm" type="button" data-q="approve" data-id="${q.id}">${ic("check")}${t("review.approve")}</button><button class="btn ghost sm" type="button" data-q="query" data-id="${q.id}">${ic("msg")}${t("review.query")}</button><button class="btn warn sm" type="button" data-q="reject" data-id="${q.id}">${ic("x")}${t("review.reject")}</button></div></article>`).join("") : `<div style="text-align:center;padding:1.5rem">${chip("done", t("queue.queueClear"))}</div>`}</div>${caActivity(null, 8)}<p class="muted" style="font-size:.8rem">${t("queue.footerNote")}</p>`, detail: false };
+    <div class="cards" role="list" aria-label="${t("queue.title")}">${open.length ? open.map((q) => `<article class="ccard" role="listitem" data-qrow="${q.id}" aria-current="${caQSel === q.id}"><div class="h"><b>${C.find((c) => c.id === q.c).name}</b><span class="num">${caInr(q.amt)}</span></div><div class="sub">${q.who}</div><div class="muted sub">${caSec(q.sec)} · ${new Date(q.d).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · <span class="conf ${q.conf < CS.lowConf ? "low" : ""}">${t("review.readPct", { conf: q.conf })}</span></div>${caRuleFlag(q) ? `<div>${chip("check", caRuleFlag(q))}</div>` : q.field ? `<div>${chip("check", q.field)}</div>` : caQFine(q) ? `<div>${chip("done", t("queue.looksFine"))}</div>` : ""}<div class="acts"><button class="btn sm" type="button" data-q="approve" data-id="${q.id}">${ic("check")}${t("review.approve")}</button><button class="btn ghost sm" type="button" data-q="query" data-id="${q.id}">${ic("msg")}${t("review.query")}</button><button class="btn warn sm" type="button" data-q="reject" data-id="${q.id}">${ic("x")}${t("review.reject")}</button></div></article>`).join("") : `<div style="text-align:center;padding:1.5rem">${chip("done", fine ? t("queue.onlyFine", { n: fine }) : t("queue.queueClear"))}</div>`}</div>${caActivity(null, 8)}<p class="muted" style="font-size:.8rem">${t("queue.footerNote")}</p>`, detail: false };
   },
   deadlines() { return { main: `<div class="ph"><h1>${t("deadlines.title")}</h1><span class="chip st-check">${ic("eye")}${t("deadlines.verifyChip")}</span></div>
     <div class="grid" style="max-height:none"><table><thead><tr><th>${t("deadlines.colDate")}</th><th>${t("deadlines.colWhat")}</th><th>${t("deadlines.colWho")}</th><th class="r">${t("deadlines.colDaysLeft")}</th><th>${t("deadlines.colStatus")}</th></tr></thead><tbody>${TaxEngine.DEADLINES.map((d) => { const days = caDays(d); return `<tr><td class="num">${new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td><td class="cname">${d.label}</td><td>${d.who}</td><td class="r num">${days < 0 ? "–" : days}</td><td>${caDeadlineChip(days)}</td></tr>`; }).join("")}</tbody></table></div>
     <div class="cards" role="list" aria-label="${t("deadlines.title")}">${TaxEngine.DEADLINES.map((d) => { const days = caDays(d); return `<article class="ccard" role="listitem"><div class="h"><b>${d.label}</b>${caDeadlineChip(days)}</div><span class="sub">${d.who}</span><div class="kv"><span><span class="eyebrow">${t("deadlines.colDate")}</span>${new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span><span><span class="eyebrow">${t("deadlines.colDaysLeft")}</span>${days < 0 ? "–" : days}</span></div></article>`; }).join("")}</div>`, detail: false }; },
+  rules() { return { main: caRulesView(), detail: false }; },
+  season() { return { main: caSeasonView(), detail: false }; },
   reports() { return { main: `<div class="ph"><h1>${t("reports.title")}</h1></div><section class="cardx"><header><h2>${t("reports.exportsHeader")}</h2><p>${t("reports.exportsSub")}</p></header>
     ${(CA_LOCALE.ca.reports.items || []).map(({ title, help }) => `<div class="row"><div><span class="lbl">${title}</span><p class="help">${help}</p></div><button class="btn ghost" type="button" data-toast="${t("reports.exportToast")}">${ic("down")}${t("reports.exportBtn")}</button></div>`).join("")}</section>
     <div class="note-box">${ic("info")}<span>${t("reports.noteBox")}</span></div>`, detail: false }; },
@@ -424,7 +572,7 @@ function caRender() {
   let focusSel = "", focusIdx = -1;
   const ae = document.activeElement;
   if (ae && ae.dataset) {
-    for (const k of ["room", "bulk", "filt", "sort", "go", "set", "toggle"]) {
+    for (const k of ["qall", "room", "bulk", "rulewin", "season", "filt", "sort", "go", "set", "toggle"]) {
       if (ae.dataset[k] !== undefined) { focusSel = `[data-${k}="${ae.dataset[k]}"]` + (k === "set" ? `[data-val="${ae.dataset.val}"]` : ""); focusIdx = [...document.querySelectorAll(focusSel)].indexOf(ae); break; }
     }
   }
@@ -449,15 +597,20 @@ function caAct(type, id) {
   q.state = type;
   AUDIT.push({ c: q.c, type, user: CA_USER, at: Date.now(), reason: type === "approve" ? "" : caReason.trim(), what: q.who, sec: q.sec });
   caReason = "";
-  const open = Q.filter((x) => x.state === "open");
+  const open = caQVisible();
   caQSel = open[0] ? open[0].id : undefined;
   syncReviewCounts();
   caToast(type === "approve" ? t("review.approved") : type === "query" ? t("review.querySent") : t("review.rejected"));
   caRender();
 }
 document.addEventListener("click", (e) => {
+  const rr = e.target.closest("[data-readiness]"); if (rr) { caExportReadinessRecord(+rr.dataset.readiness); return; }
   const ev = e.target.closest("[data-evidence]"); if (ev) { caExportEvidencePack(+ev.dataset.evidence); return; }
+  const qa = e.target.closest("[data-qall]"); if (qa) { caQShowAll = !caQShowAll; caRender(); return; }
   const rm = e.target.closest("[data-room]"); if (rm) { caRoom = caRoom === rm.dataset.room ? "" : rm.dataset.room; caRender(); return; }
+  const rw = e.target.closest("[data-rulewin]"); if (rw) { caRuleWin = +rw.dataset.rulewin; caRender(); return; }
+  const se = e.target.closest("[data-season-export]"); if (se) { se.dataset.seasonExport === "csv" ? caExportSeasonCsv() : caExportSeasonPdf(); return; }
+  const sf = e.target.closest("[data-season]"); if (sf) { caSeasonFilt = sf.dataset.season; caRender(); return; }
   const bk = e.target.closest("[data-bulk]"); if (bk) { caBulk = caBulk === bk.dataset.bulk ? "" : bk.dataset.bulk; caRender(); return; }
   const g = e.target.closest("[data-go]"); if (g) { caGo(g.dataset.go); return; }
   const f = e.target.closest("[data-filt]"); if (f) { caFilt = f.dataset.filt; if (caView !== "clients") caView = "clients"; caRender(); return; }
@@ -478,7 +631,7 @@ document.getElementById("q").addEventListener("input", (e) => { caQuery = e.targ
 document.addEventListener("keydown", (e) => {
   if (!CS.shortcuts || e.target.closest("input,textarea,select")) return;
   if (e.key === "/") { e.preventDefault(); document.getElementById("q").focus(); return; }
-  const list = caView === "queue" ? Q.filter((q) => q.state === "open").map((q) => q.id) : caView === "clients" ? [...document.querySelectorAll(".grid [data-row]")].map((r) => +r.dataset.row) : [];
+  const list = caView === "queue" ? caQVisible().map((q) => q.id) : caView === "clients" ? [...document.querySelectorAll(".grid [data-row]")].map((r) => +r.dataset.row) : [];
   if (!list.length) return;
   const cur = caView === "queue" ? caQSel : caSel, i = Math.max(0, list.indexOf(cur));
   if (e.key === "j" || e.key === "ArrowDown") { e.preventDefault(); const n = list[Math.min(list.length - 1, i + 1)]; caView === "queue" ? (caQSel = n) : (caSel = n); caRender(); }

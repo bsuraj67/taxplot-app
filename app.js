@@ -1625,6 +1625,7 @@ function renderSettingsView() {
       : `<button class="btn danger" type="button" data-act="del">${t("settings.deleteBtn")}</button>`)}
    </section>
    ${DISC}
+   <p class="meta data-note-phone">${t("common.sampleDataFooter")}</p>
   </div>`;
 }
 

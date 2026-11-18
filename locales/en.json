@@ -555,7 +555,8 @@
       "import": "Import clients",
       "notices": "Notice register",
       "status": "Client status",
-      "yreview": "Year in review"
+      "yreview": "Year in review",
+      "invite": "Invite clients"
     },
     "clients": {
       "title": "Clients",
@@ -1152,6 +1153,57 @@
       "roomNote": "Room left is an estimate from logged receipts and the limits in TaxPlot's tax settings.",
       "footer": "Informational estimate — not tax advice. Counts come from this workspace's review record; room left is an estimate and is not tax saved, a filed return or advice.",
       "failed": "Could not build the PDF — check your connection and try again."
+    },
+    "opp": {
+      "title": "Advisory opportunities",
+      "sub": "Clients on the old regime, ranked by the estimated tax effect of each point. Informational estimates for you to review with the client; you decide what, if anything, to raise.",
+      "colClient": "Client",
+      "colWhat": "Point to look at",
+      "colValue": "Informational estimate",
+      "pan": "PAN {{pan}}",
+      "kindRoom": "{{sec}}: {{amount}} of cap room not yet logged",
+      "kindParents": "{{sec}}: no parents' health-insurance premium logged yet. You may want to ask the client whether it applies (cap {{cap}})",
+      "kindLandlord": "Rent of {{rent}} a year is over the {{threshold}} landlord-PAN threshold and no landlord PAN is on record; the estimate is the tax effect of the HRA exemption",
+      "value": "about {{amount}} (estimate)",
+      "none": "No old-regime client has an item to look at right now.",
+      "note": "Informational estimate, not tax advice. Based on sample data and logged receipts only; the real effect depends on the client's full facts, and a claim needs valid proof. TaxPlot does not contact anyone."
+    },
+    "invite": {
+      "title": "Invite my clients",
+      "demoPill": "Demo preview",
+      "sub": "How a CA could bring clients in, and how a client could bring their CA in. Nothing here sends anything.",
+      "demoNote": "Demo preview, real invite links need the backend. No link is created, no message is sent by TaxPlot and no client data is collected on this page.",
+      "flowTitle": "Sample flow",
+      "stepChip": "{{n}}. {{name}}",
+      "draftTitle": "WhatsApp draft",
+      "draftSub": "Edit freely in WhatsApp before sending.",
+      "message": "Hi, this is {{firm}}. I am trying a tool where you photograph your tax receipts through the year and share them with me, so we have everything ready at filing time. It is optional, and you choose what to share. I will send the link once it is available.",
+      "openWa": "Open WhatsApp draft",
+      "draftNote": "No link is included because real invite links need the backend. The message offers nothing in return for signing up. Invite only clients who have agreed to be contacted this way, and keep the wording your own.",
+      "landTitle": "Client pulls the CA in",
+      "landSub": "What a CA would see after a client taps Share with CA. Sample screen.",
+      "landHead": "Your client sent their receipts pack",
+      "landBody": "Sample client, PAN {{pan}}: 14 receipts shared for review. Open it in TaxPlot for CAs to review. Nothing is filed and nothing is shared further.",
+      "landPrice": "Pricing is not decided yet.",
+      "landButton": "Open pack",
+      "landToast": "Demo only: real packs need the backend",
+      "rules": "No rewards, credits or fee sharing are attached to invites, to stay clear of the ICAI rules on commissions (Clauses 2 and 9 as we understand them). This is general information, not a compliance check: confirm with ICAI or your own adviser.",
+      "step1": {
+        "name": "CA invites",
+        "body": "You choose clients and open a WhatsApp message with your own wording. You press send; TaxPlot sends nothing."
+      },
+      "step2": {
+        "name": "Client opens link",
+        "body": "Needs the backend. The client would see who invited them and what sharing means before anything is shared."
+      },
+      "step3": {
+        "name": "Client decides",
+        "body": "The client chooses what to share with you and can withdraw it at any time (consent)."
+      },
+      "step4": {
+        "name": "Pack arrives",
+        "body": "Only shared receipts would appear in your review queue. You review them; nothing is filed by TaxPlot."
+      }
     }
   }
 }

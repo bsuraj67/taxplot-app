@@ -230,7 +230,7 @@ function mm(u, cap) { const st = u >= cap ? "done" : u === 0 ? "none" : "room"; 
 const CA_DISC = `<p class="disc">${ic("info")}${t("common.disclaimer")}</p>`;
 
 // ---------- state ----------
-const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["import", "up", t("nav.import")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["notices", "note", t("nav.notices")], ["status", "eye", t("nav.status")], ["rules", "msg", t("nav.rules")], ["season", "report", t("nav.season")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
+const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["import", "up", t("nav.import")], ["invite", "users", t("nav.invite")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["notices", "note", t("nav.notices")], ["status", "eye", t("nav.status")], ["rules", "msg", t("nav.rules")], ["season", "report", t("nav.season")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
 var AUDIT = [];
 var caReason = "";
 const CA_USER = "Ritu M.";
@@ -365,6 +365,39 @@ function caRoomSecs() {
 function caRoomName(s) { return caEvSecName(s.n) + (s.gloss ? " — " + t("detail." + s.gloss) : ""); }
 function caRoomList(s) { return C.filter((c) => c.rc > 0 && regimeForClient(c).better === "Old" && c[s.key] < s.cap && (!s.needsLogged || c[s.key] > 0)); }
 function caRoomMsg(c, s) { return t("room.messageOne", { name: c.name.split(" ")[0], fy: TaxEngine.FY_LABEL, amount: caInr(s.cap - c[s.key]), sec: caRoomName(s), cap: caInr(s.cap) }); }
+// ---------- Advisory opportunities (research item 5) ----------
+// Extends "Room left": per old-regime client, estimated rupee effect of (a) unused cap room, (b) parents' health insurance
+// not yet logged, (c) rent over the landlord-PAN threshold with no landlord PAN. Every figure comes from TaxEngine
+// (caps, threshold and the tax calculation); estimates only, the CA decides what to raise with the client.
+const CA_OPP_CATEGORY = { s123: "PPF", s124: "NPS Tier I Contribution", s126: "Health Insurance — Self/Family", s126p: "Health Insurance — Parents", s22: "Home Loan Interest" };
+function caOppRound(n) { const step = TaxEngine.TAX_CONFIG.receiptSavingRoundRupees || 1; return Math.max(0, Math.round(n / step) * step); }
+function caOppOldTax(c, extra, hra) {
+  return TaxEngine.compareRegimes({ grossIncome: c.inc, receipts: clientReceipts(c).concat(extra || []), hraContext: { exemptOverride: hra === undefined ? c.hra : hra }, section126Options: {} }).oldTax;
+}
+function caOppList() {
+  const out = [], base = new Map();
+  C.filter((c) => c.rc > 0 && regimeForClient(c).better === "Old").forEach((c) => {
+    base.set(c.id, caOppOldTax(c));
+    const add = (kind, sec, room, extra) => { const value = caOppRound(base.get(c.id) - caOppOldTax(c, extra)); if (value > 0) out.push({ c, kind, sec, room, value }); };
+    caRoomSecs().forEach((s) => {
+      if (c[s.key] >= s.cap) return;
+      const room = s.cap - c[s.key];
+      if (s.key === "s126p" && c.s126p === 0) return;
+      if (s.needsLogged && !(c[s.key] > 0)) return;
+      add("room", s, room, [{ category: CA_OPP_CATEGORY[s.key], amount: room }]);
+    });
+    const par = caRoomSecs().find((s) => s.key === "s126p");
+    if (!(c.s126p > 0)) add("parents", par, par.cap, [{ category: CA_OPP_CATEGORY.s126p, amount: par.cap }]);
+    if (caLandlordFlag(c)) { const v = caOppRound(caOppOldTax(c, [], 0) - base.get(c.id)); if (v > 0) out.push({ c, kind: "landlord", sec: null, room: 0, value: v }); }
+  });
+  return out.sort((a, b) => b.value - a.value);
+}
+function caOppPanel() {
+  const rows = caOppList();
+  const what = (r) => r.kind === "landlord" ? t("opp.kindLandlord", { rent: caInr(r.c.rent), threshold: caInr(TaxEngine.TAX_CONFIG.landlordPanThresholdAnnualRent) }) : r.kind === "parents" ? t("opp.kindParents", { sec: caRoomName(r.sec), cap: caInr(r.room) }) : t("opp.kindRoom", { sec: caRoomName(r.sec), amount: caInr(r.room) });
+  const body = rows.length ? `<div class="bulk-list">${rows.map((r) => `<div class="row" data-opp="${r.c.id}"><span>${r.c.name} <span class="muted num">${t("opp.pan", { pan: caMaskPan4(r.c.pan) })}</span><br><span class="muted" style="font-size:.84rem">${what(r)}</span></span><span class="num" data-opp-value>${t("opp.value", { amount: caInr(r.value) })}</span></div>`).join("")}</div>` : `<p class="muted">${t("opp.none")}</p>`;
+  return `<section class="cardx bulk opp"><header><h2>${t("opp.title")}</h2><p>${t("opp.sub")}</p></header>${body}<p class="muted" style="font-size:.78rem;padding:.2rem 1rem .6rem">${t("opp.note")}</p></section>`;
+}
 function caRoomPanel() {
   const secs = caRoomSecs(), sel = secs.find((s) => s.id === caRoom);
   const chips = secs.map((s) => `<button class="fchip" type="button" data-room="${s.id}" aria-pressed="${caRoom === s.id}">${t("room.chip", { sec: caRoomName(s), n: caRoomList(s).length })}</button>`).join("");
@@ -516,8 +549,21 @@ function caRvCard(q) {
  <div class="acts"><button class="btn sm" type="button" data-q="approve" data-id="${q.id}">${ic("check")}${t("review.approve")}</button><button class="btn ghost sm" type="button" data-q="query" data-id="${q.id}">${ic("msg")}${t("review.query")}</button><button class="btn warn sm" type="button" data-q="reject" data-id="${q.id}">${ic("x")}${t("review.reject")}</button></div></div>`;
 }
 
+// ---------- Invite my clients + client pulls the CA in (research items 1 and 2) ----------
+// DEMO ONLY: no real link, no sending, no data collection, no referral reward or credit of any kind.
+// The wa.me link only opens a message the CA reads, edits and sends themselves.
+let caInvStep = 1;
+function caInviteView() {
+  const steps = [1, 2, 3, 4];
+  const chips = steps.map((n) => `<button class="fchip" type="button" data-inv-step="${n}" aria-pressed="${caInvStep === n}">${t("invite.stepChip", { n, name: t("invite.step" + n + ".name") })}</button>`).join("");
+  const wa = "https://wa.me/?text=" + encodeURIComponent(t("invite.message", { firm: "Ritu M." }));
+  const cur = t("invite.step" + caInvStep + ".body");
+  const draft = `<section class="cardx"><header><h2>${t("invite.draftTitle")}</h2><p>${t("invite.draftSub")}</p></header><div class="note-box" style="margin:.2rem 1rem">${t("invite.message", { firm: "Ritu M." })}</div><div style="padding:.5rem 1rem"><a class="btn sm" data-invite-wa href="${wa}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("invite.openWa")}</a></div><p class="muted" style="font-size:.78rem;padding:0 1rem .6rem">${t("invite.draftNote")}</p></section>`;
+  const land = `<section class="cardx"><header><h2>${t("invite.landTitle")}</h2><p>${t("invite.landSub")}</p></header><div class="note-box" style="margin:.2rem 1rem"><b>${t("invite.landHead")}</b><p>${t("invite.landBody", { pan: caMaskPan4("ABCDE1234K") })}</p><p class="muted">${t("invite.landPrice")}</p><button class="btn ghost sm" type="button" data-toast="${t("invite.landToast")}">${t("invite.landButton")}</button></div></section>`;
+  return `<div class="ph"><h1>${t("invite.title")}</h1><span class="pill">${t("invite.demoPill")}</span></div><p class="muted" style="font-size:.86rem">${t("invite.sub")}</p><div class="note-box">${ic("info")}<span>${t("invite.demoNote")}</span></div><section class="cardx"><header><h2>${t("invite.flowTitle")}</h2></header><div class="fbar">${chips}</div><p style="padding:.2rem 1rem .6rem">${cur}</p></section>${draft}${land}<div class="note-box">${ic("info")}<span>${t("invite.rules")}</span></div>${CA_DISC}`;
+}
 const CA_VIEWS = {
-  clients() { return { main: `<div class="ph"><h1>${t("clients.title")}</h1><span class="pill">${t("common.sampleData")}</span><button class="btn ghost" type="button" data-toast="${t("clients.inviteToast")}">${t("clients.inviteClient")}</button><button class="btn" type="button" data-toast="${t("clients.exportToast")}">${ic("down")}${t("clients.export")}</button></div>${caKpis()}${caBulkPanel()}${caRoomPanel()}${caClientTable()}`, detail: true }; },
+  clients() { return { main: `<div class="ph"><h1>${t("clients.title")}</h1><span class="pill">${t("common.sampleData")}</span><button class="btn ghost" type="button" data-go="invite">${t("clients.inviteClient")}</button><button class="btn" type="button" data-toast="${t("clients.exportToast")}">${ic("down")}${t("clients.export")}</button></div>${caKpis()}${caBulkPanel()}${caRoomPanel()}${caOppPanel()}${caClientTable()}`, detail: true }; },
   dash() {
     const open = Q.filter((q) => q.state === "open");
     return { main: `<div class="ph"><h1>${t(caGreetingKey())}</h1><span class="muted" style="font-size:.85rem">${t("dash.practiceLine", { n: C.length })}</span></div>${caKpis()}
@@ -543,6 +589,7 @@ const CA_VIEWS = {
   rules() { return { main: caRulesView(), detail: false }; },
   season() { return { main: caSeasonView(), detail: false }; },
   status() { return { main: caStatusView(), detail: false }; },
+  invite() { return { main: caInviteView(), detail: false }; },
   reports() { return { main: `<div class="ph"><h1>${t("reports.title")}</h1></div><section class="cardx"><header><h2>${t("reports.exportsHeader")}</h2><p>${t("reports.exportsSub")}</p></header>
     ${(CA_LOCALE.ca.reports.items || []).map(({ title, help }) => `<div class="row"><div><span class="lbl">${title}</span><p class="help">${help}</p></div><button class="btn ghost" type="button" data-toast="${t("reports.exportToast")}">${ic("down")}${t("reports.exportBtn")}</button></div>`).join("")}</section>
     <div class="note-box">${ic("info")}<span>${t("reports.noteBox")}</span></div>`, detail: false }; },
@@ -853,7 +900,7 @@ function caRender() {
   let focusSel = "", focusIdx = -1;
   const ae = document.activeElement;
   if (ae && ae.dataset) {
-    for (const k of ["qall", "room", "bulk", "rulewin", "season", "imp", "ntcAdd", "ntcDel", "ntcStatus", "evnotice", "stStage", "stNote", "stView", "stPrint", "yreview", "filt", "sort", "go", "set", "toggle"]) {
+    for (const k of ["invStep", "qall", "room", "bulk", "rulewin", "season", "imp", "ntcAdd", "ntcDel", "ntcStatus", "evnotice", "stStage", "stNote", "stView", "stPrint", "yreview", "filt", "sort", "go", "set", "toggle"]) {
       if (ae.dataset[k] !== undefined) { focusSel = `[data-${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}="${ae.dataset[k]}"]` + (k === "set" ? `[data-val="${ae.dataset.val}"]` : ""); focusIdx = [...document.querySelectorAll(focusSel)].indexOf(ae); break; }
     }
   }
@@ -889,6 +936,7 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("[data-ntc-add]")) { caNtcAdd(); return; }
   const nd = e.target.closest("[data-ntc-del]"); if (nd) { caNotices = caNotices.filter((x) => x.id !== +nd.dataset.ntcDel); caNtcSave(); caToast(t("notice.deleted")); caRender(); return; }
   const en = e.target.closest("[data-evnotice]"); if (en) { caNtcEvidence(+en.dataset.evnotice); return; }
+  const is = e.target.closest("[data-inv-step]"); if (is) { caInvStep = +is.dataset.invStep; caRender(); return; }
   const sv = e.target.closest("[data-st-view]"); if (sv) { caStatView = +sv.dataset.stView; caRender(); return; }
   if (e.target.closest("[data-st-print]")) { caStatPrint(); return; }
   const yr = e.target.closest("[data-yreview]"); if (yr) { caExportYearReview(+yr.dataset.yreview); return; }

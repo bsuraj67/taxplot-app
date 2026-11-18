@@ -66,7 +66,7 @@ function caElectionFlag(c) {
 }
 // Landlord-PAN completeness flag (research item 5): informational only. Threshold from TAX_CONFIG [VERIFY].
 function caLandlordFlag(c) {
-  return c.hra > 0 && c.rent > TaxEngine.TAX_CONFIG.landlordPanThresholdAnnualRent && !c.landlordPan;
+  return (c.hra > 0 || (c.flags && c.flags.rent)) && c.rent > TaxEngine.TAX_CONFIG.landlordPanThresholdAnnualRent && !c.landlordPan;
 }
 function clientStatus(c) {
   if (c.rc === 0) return "none";
@@ -152,15 +152,15 @@ const CA_DOC_KEYS = ["form130", "ais", "rent", "cert126", "cert126p", "homeLoan"
 // Sample data: documents specific clients have not sent yet, on top of the spread rule below (keeps other clients stable).
 const CA_DOCS_NOT_SENT = { "Arjun Mehta": ["donation"] };
 function clientDocs(c) {
-  const need = [];
+  const need = [], f = c.flags || {}; // f = intake flags from an imported client (no amounts known yet)
   if (c.type === "Salaried") need.push("form130");
   need.push("ais");
-  if (c.hra > 0) need.push("rent");
-  if (c.s126 > 0) need.push("cert126");
-  if (c.s126p > 0) need.push("cert126p");
-  if (c.s22 > 0) need.push("homeLoan");
-  if (c.s124 > 0) need.push("nps");
-  if (c.s133 > 0) need.push("donation");
+  if (c.hra > 0 || f.rent) need.push("rent");
+  if (c.s126 > 0 || f.health) need.push("cert126");
+  if (c.s126p > 0 || f.parentsHealth) need.push("cert126p");
+  if (c.s22 > 0 || f.homeLoan) need.push("homeLoan");
+  if (c.s124 > 0 || f.nps) need.push("nps");
+  if (c.s133 > 0 || f.donations) need.push("donation");
   if (c.type !== "Salaried") need.push("income");
   const got = need.filter((d) => c.rc > 0 && !(CA_DOCS_NOT_SENT[c.name] || []).includes(d) && (c.id * 2 + CA_DOC_KEYS.indexOf(d)) % 6 !== 0);
   return { need, got, missing: need.filter((d) => !got.includes(d)) };
@@ -190,7 +190,7 @@ const TODAY = (() => {
 
 // ---------- helpers ----------
 function caInr(n) { return "₹" + Math.round(n).toLocaleString(CS.numFormat === "intl" ? "en-US" : "en-IN"); }
-function caPan(p) { return CS.maskPan ? p.slice(0, 3) + "••••" + p.slice(-2) : p; }
+function caPan(p) { if (p.charAt(0) === "•") return p; /* imported: already masked, last 4 only */ return CS.maskPan ? p.slice(0, 3) + "••••" + p.slice(-2) : p; }
 const OLD_SEC_NO = { 123: "80C", 124: "80CCD(1B)", 126: "80D", 22: "24(b)", 133: "80G" };
 function caSec(n) {
   if (n === "HRA") return "HRA";
@@ -218,6 +218,8 @@ const CA_ICONS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   auto: '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/>',
+  up: '<path d="M12 20V9M7 13.5l5-5 5 5M5 4h14"/>',
+  note: '<path d="M6 3.5h9l3.5 3.5V20.5H6z"/><path d="M14.5 3.5V7.5h4M9 12h6M9 15.5h6"/>',
   sort: '<path d="M8 9l4-4 4 4M8 15l4 4 4-4"/>',
 };
 function ic(n) { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CA_ICONS[n] || ""}</svg>`; }
@@ -228,7 +230,7 @@ function mm(u, cap) { const st = u >= cap ? "done" : u === 0 ? "none" : "room"; 
 const CA_DISC = `<p class="disc">${ic("info")}${t("common.disclaimer")}</p>`;
 
 // ---------- state ----------
-const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["rules", "msg", t("nav.rules")], ["season", "report", t("nav.season")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
+const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["import", "up", t("nav.import")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["notices", "note", t("nav.notices")], ["status", "eye", t("nav.status")], ["rules", "msg", t("nav.rules")], ["season", "report", t("nav.season")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
 var AUDIT = [];
 var caReason = "";
 const CA_USER = "Ritu M.";
@@ -382,9 +384,9 @@ function caClientTable() {
   return `<div class="fbar">${f.map(([k, label]) => `<button class="fchip" type="button" data-filt="${k}" aria-pressed="${caFilt === k}">${label}</button>`).join("")}<span class="count">${t("clients.countSummary", { shown: rows.length, total: C.length })}</span></div>
   <p class="muted" style="font-size:.78rem;margin:.1rem 0 .5rem">${t("returns.note")} ${t("election.note")} ${t("landlord.note")}</p>
   <div class="grid" role="region" aria-label="Clients"><table><thead><tr><th><input type="checkbox" class="chk" aria-label="${t("clients.selectAllAria")}"></th>${th("name", t("clients.colClient"))}<th>${t("clients.colPan")}</th>${th("inc", t("clients.colIncome"), "r")}${th("regime", t("clients.colLowerRegime"))}<th>${caSec("123")}</th><th>${caSec("126")}<div class="muted" style="font-weight:400;font-size:.72rem">${t("clients.col126split")}</div></th><th>${caSec("124")}</th><th>${t("clients.colDocs")}</th><th>${t("clients.colReturn")}</th>${th("rc", t("clients.colReceipts"), "r")}${th("rev", t("clients.colToReview"), "r")}<th>${t("clients.colStatus")}</th>${th("last", t("clients.colLastUpload"))}</tr></thead><tbody>
-  ${rows.map((c) => { const r = regimeForClient(c); return `<tr data-row="${c.id}" aria-selected="${caSel === c.id}"><td><input type="checkbox" class="chk" aria-label="${t("clients.selectClientAria", { name: c.name })}"></td><td class="cname">${c.name}<small>${c.type}</small></td><td class="pan">${caPan(c.pan)}</td><td class="r num">${caInr(c.inc)}</td><td class="reg"><b>${r.better}</b> <span class="muted num">${t("clients.byAmount", { amount: caInr(r.gap) })}</span>${caElectionFlag(c) ? `<div>${chip("check", t("election.chip"))}</div>` : ""}</td><td>${mm(c.s123, TaxEngine.SECTION_CAPS.s123.cap)}</td><td><div title="${t("detail.gloss126self")}">${mm(c.s126, TaxEngine.SECTION_CAPS.s126Self.capUnder60)}</div><div title="${t("detail.gloss126parents")}">${mm(c.s126p, TaxEngine.SECTION_CAPS.s126Parents.capUnder60)}</div></td><td>${mm(c.s124, TaxEngine.SECTION_CAPS.s124.cap)}</td><td>${caDocsCell(c)}${caLandlordFlag(c) ? `<div>${chip("check", t("landlord.chip"))}</div>` : ""}</td><td class="num">${clientReturn(c).text}</td><td class="r num">${c.rc}</td><td class="r num" style="${c.rev ? "color:var(--warn);font-weight:600" : ""}">${c.rev || "–"}</td><td>${chip(clientStatus(c))}</td><td class="num muted">${c.last === "—" ? "—" : new Date(c.last).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</td></tr>`; }).join("")}
+  ${rows.map((c) => { const r = regimeForClient(c); return `<tr data-row="${c.id}" aria-selected="${caSel === c.id}"><td><input type="checkbox" class="chk" aria-label="${t("clients.selectClientAria", { name: c.name })}"></td><td class="cname">${c.name}<small>${c.type}${c.imported ? " · " + t("import.importedChip") : ""}</small></td><td class="pan">${caPan(c.pan)}</td><td class="r num">${caInr(c.inc)}</td><td class="reg"><b>${r.better}</b> <span class="muted num">${t("clients.byAmount", { amount: caInr(r.gap) })}</span>${caElectionFlag(c) ? `<div>${chip("check", t("election.chip"))}</div>` : ""}</td><td>${mm(c.s123, TaxEngine.SECTION_CAPS.s123.cap)}</td><td><div title="${t("detail.gloss126self")}">${mm(c.s126, TaxEngine.SECTION_CAPS.s126Self.capUnder60)}</div><div title="${t("detail.gloss126parents")}">${mm(c.s126p, TaxEngine.SECTION_CAPS.s126Parents.capUnder60)}</div></td><td>${mm(c.s124, TaxEngine.SECTION_CAPS.s124.cap)}</td><td>${caDocsCell(c)}${caLandlordFlag(c) ? `<div>${chip("check", t("landlord.chip"))}</div>` : ""}</td><td class="num">${clientReturn(c).text}</td><td class="r num">${c.rc}</td><td class="r num" style="${c.rev ? "color:var(--warn);font-weight:600" : ""}">${c.rev || "–"}</td><td>${chip(clientStatus(c))}</td><td class="num muted">${c.last === "—" ? "—" : new Date(c.last).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</td></tr>`; }).join("")}
   </tbody></table></div>
-  <div class="cards" role="list" aria-label="${t("clients.title")}">${rows.map((c) => { const r = regimeForClient(c); return `<button type="button" class="ccard" role="listitem" data-row="${c.id}" aria-pressed="${caSel === c.id}"><span class="h"><b>${c.name}</b>${chip(clientStatus(c))}</span><span class="muted sub">${c.type} · <span class="pan">${caPan(c.pan)}</span></span>${caElectionFlag(c) ? `<span>${chip("check", t("election.chip"))}</span>` : ""}${caLandlordFlag(c) ? `<span>${chip("check", t("landlord.chip"))}</span>` : ""}<span class="kv"><span><span class="eyebrow">${t("clients.colIncome")}</span><span class="num">${caInr(c.inc)}</span></span><span><span class="eyebrow">${t("clients.colLowerRegime")}</span><span><b>${r.better}</b> <span class="muted num">${t("clients.byAmount", { amount: caInr(r.gap) })}</span></span></span><span><span class="eyebrow">${t("clients.colDocs")}</span><span class="num">${caDocsText(c)}</span></span><span><span class="eyebrow">${t("clients.colReturn")}</span><span class="num">${clientReturn(c).text}</span></span><span><span class="eyebrow">${t("clients.colReceipts")}</span><span class="num">${c.rc}</span></span><span><span class="eyebrow">${t("clients.colToReview")}</span><span class="num" style="${c.rev ? "color:var(--warn);font-weight:600" : ""}">${c.rev || "–"}</span></span></span></button>`; }).join("")}</div>`;
+  <div class="cards" role="list" aria-label="${t("clients.title")}">${rows.map((c) => { const r = regimeForClient(c); return `<button type="button" class="ccard" role="listitem" data-row="${c.id}" aria-pressed="${caSel === c.id}"><span class="h"><b>${c.name}</b>${chip(clientStatus(c))}</span><span class="muted sub">${c.type}${c.imported ? " · " + t("import.importedChip") : ""} · <span class="pan">${caPan(c.pan)}</span></span>${caElectionFlag(c) ? `<span>${chip("check", t("election.chip"))}</span>` : ""}${caLandlordFlag(c) ? `<span>${chip("check", t("landlord.chip"))}</span>` : ""}<span class="kv"><span><span class="eyebrow">${t("clients.colIncome")}</span><span class="num">${caInr(c.inc)}</span></span><span><span class="eyebrow">${t("clients.colLowerRegime")}</span><span><b>${r.better}</b> <span class="muted num">${t("clients.byAmount", { amount: caInr(r.gap) })}</span></span></span><span><span class="eyebrow">${t("clients.colDocs")}</span><span class="num">${caDocsText(c)}</span></span><span><span class="eyebrow">${t("clients.colReturn")}</span><span class="num">${clientReturn(c).text}</span></span><span><span class="eyebrow">${t("clients.colReceipts")}</span><span class="num">${c.rc}</span></span><span><span class="eyebrow">${t("clients.colToReview")}</span><span class="num" style="${c.rev ? "color:var(--warn);font-weight:600" : ""}">${c.rev || "–"}</span></span></span></button>`; }).join("")}</div>`;
 }
 function caKpis() {
   const rev = Q.filter((q) => q.state === "open").length, room = C.filter((c) => clientStatus(c) === "room").length, ready = C.filter((c) => clientStatus(c) === "done").length;
@@ -415,7 +417,7 @@ function caDetail() {
   const r = regimeForClient(c), items = Q.filter((q) => q.c === c.id && q.state === "open");
   const ds = (n, u, cap, gloss) => { const st = u >= cap ? "done" : u === 0 ? "none" : "room"; return `<div class="dsec"><div class="t"><b>${caSec(n)}${gloss ? " · " + gloss : ""}</b>${chip(st, st === "done" ? t("detail.fullyUsed") : st === "none" ? t("detail.notLogged") : t("detail.amountLeft", { amount: caInr(cap - u) }))}</div><div class="meter ${st}">${st === "none" ? "" : `<i style="width:${Math.min(100, (u / cap) * 100)}%"></i>`}</div><div class="f num"><span>${caInr(u)}</span><span>${t("detail.of", { cap: caInr(cap) })}</span></div></div>`; };
   return `<aside class="detail" aria-label="Client details">
-   <div><span class="eyebrow">${t("detail.typeAndSample", { type: c.type })}</span><h2>${c.name}</h2></div>
+   <div><span class="eyebrow">${t(c.imported ? "detail.typeAndImported" : "detail.typeAndSample", { type: c.type })}</span><h2>${c.name}</h2></div>
    <dl class="dl"><dt>${t("detail.pan")}</dt><dd class="num">${caPan(c.pan)}</dd><dt>${t("detail.incomeDeclared")}</dt><dd class="num">${caInr(c.inc)}</dd><dt>${t("detail.receipts")}</dt><dd class="num">${t("detail.receiptsValue", { logged: c.rc, review: c.rev })}</dd><dt>${t("returns.detailLabel")}</dt><dd class="num">${clientReturn(c).text}</dd><dt>${t("detail.hraEstimate")}</dt><dd class="num">${c.hra ? caInr(c.hra) : t("detail.notClaimed")}</dd></dl>
    <div class="consent">${ic("shield")}<span>${t("detail.consentNote", { fy: TaxEngine.FY_LABEL })}</span></div>
    <div class="cmp"><div class="${r.better === "Old" ? "lower" : ""}"><span class="eyebrow">${t("detail.oldRegime")}</span><b>${caInr(r.old)}</b></div><div class="${r.better === "New" ? "lower" : ""}"><span class="eyebrow">${t("detail.newRegime")}</span><b>${caInr(r.neu)}</b></div></div>
@@ -427,7 +429,7 @@ function caDetail() {
    ${items.length ? caReasonField() + items.map(caRvCard).join("") : `<p class="muted" style="font-size:.84rem">${t("detail.nothingToReview")}</p>`}</div>
    ${caActivity(c.id, 5)}
    <div style="display:grid;gap:.3rem"><label class="eyebrow" for="cnote">${t("detail.privateNoteLabel")}</label><textarea id="cnote" placeholder="${t("detail.privateNotePlaceholder")}"></textarea></div>
-   <div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn" type="button" data-toast="${t("detail.exportSummaryToast")}">${ic("down")}${t("detail.exportSummary")}</button><button class="btn ghost" type="button" data-evidence="${c.id}">${ic("down")}${t("evidence.button")}</button><button class="btn ghost" type="button" data-readiness="${c.id}">${ic("down")}${t("readiness.button")}</button>${clientDocs(c).missing.length ? `<a class="btn ghost" href="${caWaLink(c, clientDocs(c).missing)}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("detail.askClient")}</a>` : `<button class="btn ghost" type="button" data-toast="${t("detail.askClientToast")}">${ic("msg")}${t("detail.askClient")}</button>`}</div>
+   <div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn" type="button" data-toast="${t("detail.exportSummaryToast")}">${ic("down")}${t("detail.exportSummary")}</button><button class="btn ghost" type="button" data-evidence="${c.id}">${ic("down")}${t("evidence.button")}</button><button class="btn ghost" type="button" data-readiness="${c.id}">${ic("down")}${t("readiness.button")}</button><button class="btn ghost" type="button" data-yreview="${c.id}">${ic("down")}${t("yreview.button")}</button>${clientDocs(c).missing.length ? `<a class="btn ghost" href="${caWaLink(c, clientDocs(c).missing)}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("detail.askClient")}</a>` : `<button class="btn ghost" type="button" data-toast="${t("detail.askClientToast")}">${ic("msg")}${t("detail.askClient")}</button>`}</div>
    <p class="muted" style="font-size:.76rem">${t("detail.footerNote")}</p>
   </aside>`;
 }
@@ -447,10 +449,13 @@ const CA_PDF_LIBS = {
   autotable: "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js",
 };
 function caEvSecName(n) { return `Section ${n} (${OLD_SEC_NO[n]})`; }
-function buildEvidencePackData(c) {
-  const rows = [["123", "s123", c.s123], ["124", "s124", c.s124], ["126", "s126self", c.s126], ["126", "s126parents", c.s126p], ["22", "s22", c.s22], ["133", "s133", c.s133]];
+// `only` (optional): an evidence key such as "s126self" limits the pack to that one section (used by the notice register).
+function caEvRows(c) { return [["123", "s123", c.s123], ["124", "s124", c.s124], ["126", "s126self", c.s126], ["126", "s126parents", c.s126p], ["22", "s22", c.s22], ["133", "s133", c.s133]]; }
+function buildEvidencePackData(c, only) {
+  const rows = caEvRows(c).filter((r) => !only || r[1] === only);
   const sections = rows.filter((r) => r[2] > 0).map(([n, key, amount]) => ({ label: `${caEvSecName(n)} (${t("evidence.plain." + key)})`, amount, lastUpload: c.last }));
-  return { title: t("evidence.title", { name: c.name, fy: TaxEngine.FY_LABEL }), intro: t("evidence.intro"), sections, empty: t("evidence.empty"), footer: t("evidence.footer"), filename: "TaxPlot_Evidence_Pack_" + c.name.replace(/\W+/g, "_") + ".pdf" };
+  const sec = only && rows[0] ? `${caEvSecName(rows[0][0])} (${t("evidence.plain." + only)})` : "";
+  return { title: t("evidence.title", { name: c.name, fy: TaxEngine.FY_LABEL }), intro: t("evidence.intro") + (sec ? " " + t("notice.packScope", { section: sec }) : ""), sections, empty: only ? t("evidence.sectionOnly") : t("evidence.empty"), footer: t("evidence.footer"), filename: "TaxPlot_Evidence_Pack_" + c.name.replace(/\W+/g, "_") + (only ? "_" + only : "") + ".pdf" };
 }
 // ---------- Review record (research item 8): dated record of review actions for one client ----------
 function buildReadinessRecordData(c, now = Date.now()) {
@@ -488,9 +493,9 @@ async function caExportReadinessRecord(id) {
 function caLoadScript(src) {
   return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement("script"); s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error("load failed " + src)); document.head.appendChild(s); });
 }
-async function caExportEvidencePack(id) {
+async function caExportEvidencePack(id, only) {
   const c = C.find((x) => x.id === id); if (!c) return;
-  const data = buildEvidencePackData(c);
+  const data = buildEvidencePackData(c, only);
   try {
     if (!(window.jspdf && window.jspdf.jsPDF)) await caLoadScript(CA_PDF_LIBS.jspdf);
     if (!(window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable)) await caLoadScript(CA_PDF_LIBS.autotable);
@@ -533,8 +538,11 @@ const CA_VIEWS = {
   deadlines() { return { main: `<div class="ph"><h1>${t("deadlines.title")}</h1><span class="chip st-check">${ic("eye")}${t("deadlines.verifyChip")}</span></div>
     <div class="grid" style="max-height:none"><table><thead><tr><th>${t("deadlines.colDate")}</th><th>${t("deadlines.colWhat")}</th><th>${t("deadlines.colWho")}</th><th class="r">${t("deadlines.colDaysLeft")}</th><th>${t("deadlines.colStatus")}</th></tr></thead><tbody>${TaxEngine.DEADLINES.map((d) => { const days = caDays(d); return `<tr><td class="num">${new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td><td class="cname">${d.label}</td><td>${d.who}</td><td class="r num">${days < 0 ? "–" : days}</td><td>${caDeadlineChip(days)}</td></tr>`; }).join("")}</tbody></table></div>
     <div class="cards" role="list" aria-label="${t("deadlines.title")}">${TaxEngine.DEADLINES.map((d) => { const days = caDays(d); return `<article class="ccard" role="listitem"><div class="h"><b>${d.label}</b>${caDeadlineChip(days)}</div><span class="sub">${d.who}</span><div class="kv"><span><span class="eyebrow">${t("deadlines.colDate")}</span>${new Date(d.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span><span><span class="eyebrow">${t("deadlines.colDaysLeft")}</span>${days < 0 ? "–" : days}</span></div></article>`; }).join("")}</div>`, detail: false }; },
+  import() { return { main: caImportView(), detail: false }; },
+  notices() { return { main: caNoticeView(), detail: false }; },
   rules() { return { main: caRulesView(), detail: false }; },
   season() { return { main: caSeasonView(), detail: false }; },
+  status() { return { main: caStatusView(), detail: false }; },
   reports() { return { main: `<div class="ph"><h1>${t("reports.title")}</h1></div><section class="cardx"><header><h2>${t("reports.exportsHeader")}</h2><p>${t("reports.exportsSub")}</p></header>
     ${(CA_LOCALE.ca.reports.items || []).map(({ title, help }) => `<div class="row"><div><span class="lbl">${title}</span><p class="help">${help}</p></div><button class="btn ghost" type="button" data-toast="${t("reports.exportToast")}">${ic("down")}${t("reports.exportBtn")}</button></div>`).join("")}</section>
     <div class="note-box">${ic("info")}<span>${t("reports.noteBox")}</span></div>`, detail: false }; },
@@ -565,6 +573,279 @@ const CA_VIEWS = {
   },
 };
 
+// ---------- Client import (Turia research item 2) ----------
+// The CA picks a CSV; it is parsed in this browser and never uploaded. PANs are masked the moment
+// they are read (last 4 characters kept, the full PAN is not stored or shown or exported).
+// Intake flags only decide which documents we expect; they carry no amounts and no tax figures.
+const CA_IMPORT_CONFIG = {
+  maxBytes: 1024 * 1024, maxRows: 500, idStart: 1000, storeKey: "taxplot.ca.imported",
+  types: { salaried: "Salaried", freelancer: "Freelancer", "gig worker": "Gig worker", gig: "Gig worker" },
+  // [key, accepted header names (first one is the template name), required]
+  columns: [["name", ["name", "client_name", "client"], true], ["pan", ["pan", "pan_number"], true], ["type", ["type", "client_type"], true], ["income", ["annual_income", "income"]], ["regime", ["regime_on_record", "regime"]], ["rent", ["rent_paid", "annual_rent", "rent"]], ["landlordPan", ["landlord_pan_on_file", "landlord_pan"]], ["homeLoan", ["home_loan"]], ["health", ["health_insurance_self", "health_insurance", "health"]], ["parentsHealth", ["health_insurance_parents", "parents_health"]], ["nps", ["nps"]], ["donations", ["donations"]]],
+  flagKeys: ["rent", "homeLoan", "health", "parentsHealth", "nps", "donations"],
+  example: ["Example Client", "ABCDE1234F", "Salaried", "1200000", "New", "0", "", "no", "yes", "no", "no", "no"], // fictional placeholder PAN
+};
+var caImp = null, caImpErr = "", caImpConfirm = false; // var: reachable from tests
+function caParseCsv(text) {
+  const out = []; let row = [], cell = "", q = false, line = 1, start = 1;
+  const endRow = () => { row.push(cell); cell = ""; if (row.some((x) => x.trim() !== "")) out.push({ line: start, cells: row }); row = []; start = line + 1; };
+  text = String(text).replace(/^﻿/, "");
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else { if (ch === "\n") line++; cell += ch; } }
+    else if (ch === '"' && cell === "") q = true;
+    else if (ch === ",") { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; endRow(); line++; start = line; }
+    else cell += ch;
+  }
+  if (cell !== "" || row.length) endRow();
+  return out;
+}
+function caImportTemplateText() {
+  const cols = CA_IMPORT_CONFIG.columns;
+  return cols.map((c) => c[1][0]).join(",") + "\n" + CA_IMPORT_CONFIG.example.map(caCsvCell).join(",") + "\n";
+}
+function caCleanName(n) { return String(n == null ? "" : n).replace(/[<>"&`\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 60); }
+function caImportParse(text) {
+  const cfg = CA_IMPORT_CONFIG, recs = caParseCsv(text);
+  if (!recs.length) return { fileError: t("import.errEmpty"), rows: [] };
+  const norm = (h) => String(h).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const heads = recs[0].cells.map(norm), idx = {};
+  cfg.columns.forEach(([k, names]) => { const i = heads.findIndex((h) => names.includes(h)); if (i >= 0) idx[k] = i; });
+  const missing = cfg.columns.filter(([k, , req]) => req && idx[k] === undefined).map(([, names]) => names[0]);
+  if (missing.length) return { fileError: t("import.errHeader", { cols: missing.join(", ") }), rows: [] };
+  const used = new Set(Object.values(idx)), ignored = recs[0].cells.filter((h, i) => !used.has(i) && h.trim()).map((h) => caCleanName(h));
+  const body = recs.slice(1);
+  if (body.length > cfg.maxRows) return { fileError: t("import.errTooMany", { n: cfg.maxRows }), rows: [] };
+  const seen = new Set(), rows = [];
+  body.forEach(({ line, cells }) => {
+    const g = (k) => (idx[k] === undefined ? "" : String(cells[idx[k]] == null ? "" : cells[idx[k]]).trim());
+    const errors = [], warns = [], rawName = g("name"), name = caCleanName(rawName);
+    if (!name) errors.push(t("import.errName")); else if (name !== rawName.replace(/\s+/g, " ").trim().slice(0, 60)) warns.push(t("import.warnName"));
+    const pan = g("pan").toUpperCase().replace(/\s+/g, ""), panOk = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
+    if (!panOk) errors.push(t("import.errPan")); else if (seen.has(pan)) errors.push(t("import.errPanDup")); else seen.add(pan);
+    const last4 = panOk ? pan.slice(-4) : "";
+    const type = cfg.types[g("type").toLowerCase()] || ""; if (!type) errors.push(t("import.errType"));
+    let inc = 0; const incRaw = g("income").replace(/^(₹|rs\.?|inr)/i, "").replace(/[,\s]/g, "");
+    if (incRaw) { if (/^\d+(\.\d+)?$/.test(incRaw)) inc = Math.round(+incRaw); else errors.push(t("import.errIncome")); }
+    const rg = g("regime").toLowerCase(); let regime = "";
+    if (rg) { if (rg === "old" || rg === "new") regime = rg === "old" ? "Old" : "New"; else errors.push(t("import.errRegime")); }
+    let rent = 0; const rentRaw = g("rent").replace(/^(₹|rs\.?|inr)/i, "").replace(/[,\s]/g, "");
+    if (rentRaw) { if (/^\d+(\.\d+)?$/.test(rentRaw)) rent = Math.round(+rentRaw); else errors.push(t("import.errRent")); }
+    const flag = (k) => { const v = g(k).toLowerCase(); if (!v || ["no", "n", "false", "0"].includes(v)) return false; if (["yes", "y", "true", "1"].includes(v)) return true; errors.push(t("import.errFlag", { col: cfg.columns.find((c) => c[0] === k)[1][0] })); return false; };
+    const flags = { rent: rent > 0, homeLoan: flag("homeLoan"), health: flag("health"), parentsHealth: flag("parentsHealth"), nps: flag("nps"), donations: flag("donations") };
+    const landlordPan = flag("landlordPan");
+    if (last4 && C.some((c) => c.name.toLowerCase() === name.toLowerCase() && c.pan.slice(-4) === last4)) warns.push(t("import.warnDup"));
+    rows.push({ line, name, last4, type, inc, regime, rent, landlordPan, flags, errors, warns });
+  });
+  return { rows, ignored, total: rows.length, ok: rows.filter((r) => !r.errors.length).length };
+}
+function caMakeClient(f, id) {
+  return { id, name: caCleanName(f.name), pan: "••••••" + String(f.last4).slice(-4), type: f.type, inc: f.inc || 0, s123: 0, s124: 0, s126: 0, s126p: 0, s22: 0, hra: 0, rc: 0, rev: 0, last: "—", elected: f.regime || "New", s133: 0, rent: f.rent || 0, landlordPan: !!f.landlordPan, flags: Object.assign({}, f.flags), imported: true };
+}
+function caImportSave() { try { localStorage.setItem(CA_IMPORT_CONFIG.storeKey, JSON.stringify(C.filter((c) => c.imported))); } catch (e) {} }
+function caImportLoad() {
+  let arr = []; try { arr = JSON.parse(localStorage.getItem(CA_IMPORT_CONFIG.storeKey) || "[]"); } catch (e) {}
+  if (!Array.isArray(arr)) return;
+  arr.forEach((o) => {
+    if (!o || typeof o.name !== "string" || !Number.isInteger(o.id) || C.some((c) => c.id === o.id)) return;
+    const type = Object.values(CA_IMPORT_CONFIG.types).includes(o.type) ? o.type : "Salaried", fl = o.flags || {};
+    const flags = {}; CA_IMPORT_CONFIG.flagKeys.forEach((k) => { flags[k] = !!fl[k]; });
+    const c = caMakeClient({ name: o.name, last4: String(o.pan || "").replace(/[^A-Z0-9]/gi, "").slice(-4), type, inc: Math.max(0, +o.inc || 0), regime: o.elected === "Old" ? "Old" : "New", rent: Math.max(0, +o.rent || 0), landlordPan: o.landlordPan, flags }, o.id);
+    if (c.name) C.push(c);
+  });
+}
+function caImportLoadText(text) { caImp = caImportParse(text); caImpErr = caImp.fileError || ""; caImpConfirm = false; caRender(); }
+function caImportFile(file) {
+  const max = CA_IMPORT_CONFIG.maxBytes;
+  if (!file) return;
+  if (file.size > max) { caImp = null; caImpErr = t("import.errTooBig", { mb: Math.round(max / 1048576) }); return caRender(); }
+  if (!/\.csv$/i.test(file.name || "")) { caImp = null; caImpErr = t("import.errNotCsv"); return caRender(); }
+  const done = (txt) => caImportLoadText(txt), fail = () => { caImp = null; caImpErr = t("import.errRead"); caRender(); };
+  if (file.text) file.text().then(done, fail);
+  else { const r = new FileReader(); r.onload = () => done(String(r.result)); r.onerror = fail; r.readAsText(file); }
+}
+function caImportCommit() {
+  const ok = caImp && caImp.rows ? caImp.rows.filter((r) => !r.errors.length) : [];
+  if (!ok.length) { caToast(t("import.nothing")); return; }
+  let id = Math.max(CA_IMPORT_CONFIG.idStart, ...C.map((c) => c.id)) + 1;
+  ok.forEach((r) => C.push(caMakeClient(r, id++)));
+  caImportSave(); caImp = null; caImpErr = "";
+  caToast(t("import.done", { n: ok.length })); caView = "clients"; caRender();
+}
+function caImportDownloadTemplate() {
+  try {
+    const url = URL.createObjectURL(new Blob([caImportTemplateText()], { type: "text/csv" }));
+    const a = document.createElement("a"); a.href = url; a.download = t("import.templateFile"); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { console.error("Template download failed", e); }
+}
+function caImportView() {
+  const cfg = CA_IMPORT_CONFIG, n = C.filter((c) => c.imported).length;
+  const cols = cfg.columns.map(([k, names, req]) => `<div class="row"><div><span class="lbl"><code>${names[0]}</code>${req ? ` <span class="pill">${t("import.required")}</span>` : ""}</span><p class="help">${t("import.col." + k)}</p></div></div>`).join("");
+  const flagText = (f) => cfg.flagKeys.filter((k) => f[k]).map((k) => t("import.flag." + k)).join(", ") || t("import.noFlags");
+  let prev = "";
+  if (caImp && caImp.rows && caImp.rows.length) {
+    const bad = caImp.total - caImp.ok, chk = (r) => (r.errors.length ? chip("check", caEsc(r.errors.join("; "))) : chip("done", t("import.rowOk"))) + (r.warns.length ? `<div class="muted" style="font-size:.76rem">${caEsc(r.warns.join("; "))}</div>` : "");
+    prev = `<section class="cardx" data-imp-preview><header><h2>${t("import.step3")}</h2><p>${t("import.summary", { total: caImp.total, ok: caImp.ok, bad })}</p></header>
+    ${caImp.ignored.length ? `<p class="muted" style="font-size:.8rem">${t("import.ignored", { cols: caEsc(caImp.ignored.join(", ")) })}</p>` : ""}
+    <div class="grid" role="region" aria-label="${t("import.step3")}" style="max-height:none"><table><thead><tr><th>${t("import.colLine")}</th><th>${t("import.colName")}</th><th>${t("import.colPan")}</th><th>${t("import.colType")}</th><th class="r">${t("import.colIncome")}</th><th>${t("import.colFlags")}</th><th>${t("import.colCheck")}</th></tr></thead><tbody>
+    ${caImp.rows.map((r) => `<tr data-improw="${r.line}"><td class="num">${r.line}</td><td class="cname">${caEsc(r.name)}</td><td class="pan">${r.last4 ? "••••••" + caEsc(r.last4) : "–"}</td><td>${caEsc(r.type) || "–"}</td><td class="r num">${caInr(r.inc)}</td><td>${caEsc(flagText(r.flags))}</td><td>${chk(r)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="cards" role="list" aria-label="${t("import.step3")}">${caImp.rows.map((r) => `<article class="ccard" role="listitem" data-improw="${r.line}"><div class="h"><b>${caEsc(r.name) || "–"}</b><span class="muted">#${r.line}</span></div><span class="muted sub">${caEsc(r.type) || "–"} · <span class="pan">${r.last4 ? "••••••" + caEsc(r.last4) : "–"}</span> · <span class="num">${caInr(r.inc)}</span></span><span class="sub">${caEsc(flagText(r.flags))}</span><span>${chk(r)}</span></article>`).join("")}</div>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem"><button class="btn" type="button" data-imp="import"${caImp.ok ? "" : " disabled"}>${ic("check")}${t("import.importBtn", { n: caImp.ok })}</button><button class="btn ghost" type="button" data-imp="clear">${t("import.clearBtn")}</button></div></section>`;
+  }
+  return `<div class="ph"><h1>${t("import.title")}</h1></div>
+  <div class="note-box">${ic("shield")}<span><b>${t("import.privacy")}</b> ${t("import.panNote")} ${t("import.stored")}</span></div>
+  <section class="cardx"><header><h2>${t("import.step1")}</h2><p>${t("import.step1Help")}</p></header><button class="btn ghost" type="button" data-imp="template">${ic("down")}${t("import.templateBtn")}</button><details style="margin-top:.6rem"><summary>${t("import.columnsLabel")}</summary>${cols}</details></section>
+  <section class="cardx"><header><h2>${t("import.step2")}</h2><p>${t("import.step2Help", { rows: cfg.maxRows })}</p></header><input type="file" id="ca-import-file" accept=".csv,text/csv" aria-label="${t("import.fileLabel")}">${caImpErr ? `<p role="alert" class="muted" style="color:var(--warn,#b45309);margin-top:.5rem">${caEsc(caImpErr)}</p>` : ""}</section>
+  ${prev}
+  <section class="cardx"><div class="row"><div><span class="lbl">${n ? t("import.importedCount", { n }) : t("import.importedNone")}</span></div>${n ? `<button class="btn warn sm" type="button" data-imp="remove">${caImpConfirm ? t("import.removeConfirm", { n }) : t("import.removeBtn")}</button>` : ""}</div></section>
+  ${CA_DISC}`;
+}
+
+// ---------- Manual notice register (Turia research item 3) ----------
+// The CA logs notices by hand. No portal fetching, no credentials, nothing is filed or sent.
+// Dates and statuses are the CA's own record, not advice. One click builds that client's evidence pack for the section.
+const CA_NOTICE_CONFIG = {
+  storeKey: "taxplot.ca.notices", soonDays: 7,
+  types: ["intimation", "defective", "information", "scrutiny", "demand", "other"],
+  statuses: ["open", "replied", "closed"],
+  sections: [["123", "s123"], ["124", "s124"], ["126", "s126self"], ["126", "s126parents"], ["22", "s22"], ["133", "s133"]],
+};
+var caNotices = [], caNtcErr = "", caNtcDraft = { c: "", type: "intimation", sec: "s123", due: "", status: "open", note: "" };
+function caNtcSecLabel(key) { const s = CA_NOTICE_CONFIG.sections.find((x) => x[1] === key); return s ? `${caEvSecName(s[0])} — ${t("evidence.plain." + key)}` : t("notice.otherSection"); }
+function caNtcDays(due) { return Math.round((new Date(due) - TODAY) / 864e5); }
+function caNtcSave() { try { localStorage.setItem(CA_NOTICE_CONFIG.storeKey, JSON.stringify(caNotices)); } catch (e) {} }
+function caNtcValid(o) { return o && Number.isInteger(o.id) && Number.isInteger(o.c) && CA_NOTICE_CONFIG.types.includes(o.type) && CA_NOTICE_CONFIG.statuses.includes(o.status) && /^\d{4}-\d{2}-\d{2}$/.test(o.due) && !isNaN(new Date(o.due)) && (o.sec === "" || CA_NOTICE_CONFIG.sections.some((s) => s[1] === o.sec)); }
+function caNtcLoad() { try { const a = JSON.parse(localStorage.getItem(CA_NOTICE_CONFIG.storeKey) || "[]"); if (Array.isArray(a)) caNotices = a.filter(caNtcValid).map((o) => ({ id: o.id, c: o.c, type: o.type, sec: o.sec, due: o.due, status: o.status, note: String(o.note || "").slice(0, 200) })); } catch (e) {} }
+function caNtcAdd() {
+  const d = caNtcDraft, c = C.find((x) => x.id === +d.c);
+  if (!c) { caNtcErr = t("notice.errClient"); return caRender(); }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.due) || isNaN(new Date(d.due))) { caNtcErr = t("notice.errDue"); return caRender(); }
+  caNotices.push({ id: Math.max(0, ...caNotices.map((n) => n.id)) + 1, c: c.id, type: d.type, sec: d.sec, due: d.due, status: d.status, note: d.note.slice(0, 200) });
+  caNtcSave(); caNtcErr = ""; caNtcDraft = Object.assign({}, caNtcDraft, { due: "", note: "" });
+  caToast(t("notice.added")); caRender();
+}
+function caNtcEvidence(id) { const n = caNotices.find((x) => x.id === id); if (n) caExportEvidencePack(n.c, n.sec || undefined); }
+function caNoticeView() {
+  const cfg = CA_NOTICE_CONFIG, d = caNtcDraft;
+  const open = caNotices.filter((n) => n.status !== "closed"), late = open.filter((n) => caNtcDays(n.due) < 0).length, soon = open.filter((n) => { const k = caNtcDays(n.due); return k >= 0 && k <= cfg.soonDays; }).length;
+  const opt = (v, label, cur) => `<option value="${caEsc(v)}"${String(cur) === String(v) ? " selected" : ""}>${caEsc(label)}</option>`;
+  const fld = (label, id, ctl) => `<div style="display:grid;gap:.25rem"><label class="eyebrow" for="${id}">${label}</label>${ctl}</div>`;
+  const form = `<section class="cardx"><header><h2>${t("notice.addHeader")}</h2></header><div style="display:grid;gap:.6rem;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+   ${fld(t("notice.client"), "nf-c", `<select class="sel" id="nf-c" data-nf="c"><option value="">${t("notice.pickClient")}</option>${C.map((c) => opt(c.id, c.name, d.c)).join("")}</select>`)}
+   ${fld(t("notice.type"), "nf-type", `<select class="sel" id="nf-type" data-nf="type">${cfg.types.map((k) => opt(k, t("notice.types." + k), d.type)).join("")}</select>`)}
+   ${fld(t("notice.section"), "nf-sec", `<select class="sel" id="nf-sec" data-nf="sec">${cfg.sections.map(([, k]) => opt(k, caNtcSecLabel(k), d.sec)).join("")}${opt("", t("notice.otherSection"), d.sec)}</select>`)}
+   ${fld(t("notice.due"), "nf-due", `<input class="sel" type="date" id="nf-due" data-nf="due" value="${caEsc(d.due)}">`)}
+   ${fld(t("notice.status"), "nf-status", `<select class="sel" id="nf-status" data-nf="status">${cfg.statuses.map((k) => opt(k, t("notice.statuses." + k), d.status)).join("")}</select>`)}
+   ${fld(t("notice.noteLabel"), "nf-note", `<input class="sel" type="text" id="nf-note" data-nf="note" maxlength="200" value="${caEsc(d.note)}">`)}</div>
+   ${caNtcErr ? `<p role="alert" class="muted" style="color:var(--warn,#b45309)">${caEsc(caNtcErr)}</p>` : ""}
+   <div style="margin-top:.6rem"><button class="btn" type="button" data-ntc-add="1">${ic("check")}${t("notice.addBtn")}</button></div></section>`;
+  const rows = caNotices.slice().sort((a, b) => (a.due > b.due ? 1 : a.due < b.due ? -1 : a.id - b.id)).map((n) => {
+    const c = C.find((x) => x.id === n.c), days = caNtcDays(n.due), name = c ? c.name : t("notice.clientGone");
+    const timing = n.status === "closed" ? chip("done", t("notice.closedTiming")) : days < 0 ? chip("soon", t("notice.overdue", { n: -days })) : days === 0 ? chip("check", t("notice.dueToday")) : chip(days <= cfg.soonDays ? "check" : "room", t("notice.inDays", { n: days }));
+    const sel = `<select class="sel" data-ntc-status="${n.id}" aria-label="${t("notice.statusAria", { name: caEsc(name) })}">${cfg.statuses.map((k) => opt(k, t("notice.statuses." + k), n.status)).join("")}</select>`;
+    const acts = `${c ? `<button class="btn ghost sm" type="button" data-evnotice="${n.id}">${ic("down")}${n.sec ? t("notice.evidenceBtn") : t("notice.evidenceBtnAll")}</button>` : ""}<button class="btn ghost sm" type="button" data-ntc-del="${n.id}">${t("notice.deleteBtn")}</button>`;
+    return { n, name, timing, sel, acts };
+  });
+  const table = rows.length ? `<div class="grid" role="region" aria-label="${t("notice.title")}" style="max-height:none"><table><thead><tr><th>${t("notice.colDue")}</th><th>${t("notice.colClient")}</th><th>${t("notice.colType")}</th><th>${t("notice.colSection")}</th><th>${t("notice.colStatus")}</th><th>${t("notice.colTiming")}</th><th>${t("notice.colAction")}</th></tr></thead><tbody>
+   ${rows.map(({ n, name, timing, sel, acts }) => `<tr data-notice="${n.id}"><td class="num">${new Date(n.due).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td><td class="cname">${caEsc(name)}${n.note ? `<small>${caEsc(n.note)}</small>` : ""}</td><td>${t("notice.types." + n.type)}</td><td>${caEsc(n.sec ? caNtcSecLabel(n.sec) : t("notice.otherSection"))}</td><td>${sel}</td><td>${timing}</td><td><div style="display:flex;gap:.3rem;flex-wrap:wrap">${acts}</div></td></tr>`).join("")}</tbody></table></div>
+   <div class="cards" role="list" aria-label="${t("notice.title")}">${rows.map(({ n, name, timing, sel, acts }) => `<article class="ccard" role="listitem" data-notice="${n.id}"><div class="h"><b>${caEsc(name)}</b>${timing}</div><span class="sub">${t("notice.types." + n.type)} · ${caEsc(n.sec ? caNtcSecLabel(n.sec) : t("notice.otherSection"))}</span><span class="muted sub">${new Date(n.due).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}${n.note ? " · " + caEsc(n.note) : ""}</span><span>${sel}</span><div style="display:flex;gap:.3rem;flex-wrap:wrap">${acts}</div></article>`).join("")}</div>` : `<p class="muted">${t("notice.none")}</p>`;
+  return `<div class="ph"><h1>${t("notice.title")}</h1></div><p class="muted" style="font-size:.86rem">${t("notice.sub")}</p>
+  ${caNotices.length ? `<p class="muted" style="font-size:.84rem">${t("notice.countSummary", { open: open.length, soon, days: cfg.soonDays, late })}</p>` : ""}
+  ${form}<section class="cardx">${table}</section><div class="note-box">${ic("info")}<span>${t("notice.note")}</span></div>${CA_DISC}`;
+}
+
+// ---------- Client status page + Year in review (CA workspace) ----------
+// Status stages and the message are the CA's own words, set by hand; TaxPlot never claims it filed
+// anything or that a return was accepted. "filed" is only a label the CA sets. Demo/sample data until
+// the backend exists; kept in this browser's localStorage. Year in review uses counts from the review
+// record (AUDIT) and TaxEngine figures only; nothing is "tax saved".
+const CA_STATUS_CONFIG = { storeKey: "taxplot.ca.clientStatus", stages: ["asked", "received", "reviewed", "ready", "filed"], noteMax: 200 };
+var caStat = {}, caStatView = 0; // caStat: { [clientId]: { stage, note } } set by the CA; var for tests
+function caStatLoad() {
+  try {
+    const o = JSON.parse(localStorage.getItem(CA_STATUS_CONFIG.storeKey) || "{}");
+    if (o && typeof o === "object") Object.keys(o).forEach((k) => { const v = o[k]; if (v && (v.stage === undefined || CA_STATUS_CONFIG.stages.includes(v.stage))) caStat[k] = { stage: v.stage, note: String(v.note || "").slice(0, CA_STATUS_CONFIG.noteMax) }; });
+  } catch (e) {}
+}
+function caStatSave() { try { localStorage.setItem(CA_STATUS_CONFIG.storeKey, JSON.stringify(caStat)); } catch (e) {} }
+// Suggested stage only; never "ready" or "filed" (those are the CA's call).
+function caStatSuggest(c) { const d = clientDocs(c); return c.rc === 0 || d.missing.length ? "asked" : c.rev > 0 ? "received" : "reviewed"; }
+function caStatOf(c) { const s = caStat[c.id] || {}; return { stage: s.stage || caStatSuggest(c), note: s.note || "", edited: !!s.stage }; }
+function caStatSet(id, patch) { caStat[id] = Object.assign({}, caStat[id] || {}, patch); caStatSave(); }
+function caStatClientView(c) {
+  const st = caStatOf(c), cfg = CA_STATUS_CONFIG, idx = cfg.stages.indexOf(st.stage), d = clientDocs(c);
+  const steps = cfg.stages.map((k, i) => `<li${i === idx ? ' aria-current="step"' : ""} style="display:flex;gap:.5rem;align-items:flex-start;padding:.35rem 0;${i === idx ? "font-weight:600" : i > idx ? "opacity:.6" : ""}"><span>${i < idx ? ic("check") : i === idx ? ic("clock") : ic("dash")}</span><span>${t("cstatus.stage." + k)}${i === idx ? ` <span class="pill">${t("cstatus.youAreHere")}</span>` : i > idx ? ` <span class="pill">${t("cstatus.notYet")}</span>` : ""}${i <= idx ? `<span class="muted" style="display:block;font-weight:400;font-size:.8rem">${t("cstatus.stageHelp." + k)}</span>` : ""}</span></li>`).join("");
+  const need = d.missing.length ? `<ul>${d.missing.map((k) => `<li>${t("docs." + k)}</li>`).join("")}</ul>` : `<p class="muted">${t("cstatus.nothingNeeded")}</p>`;
+  return `<section class="cardx cs-print" data-client-status-view="${c.id}"><header><h2>${t("cstatus.clientViewTitle", { fy: TaxEngine.FY_LABEL })}</h2><p>${t("cstatus.clientViewFor", { name: caEsc(c.name) })}</p></header>
+   <p class="muted" style="font-size:.84rem"><b>${t("cstatus.preview")}</b></p>
+   <h3 style="font-size:.95rem">${t("cstatus.stepsHeader")}</h3><ol style="list-style:none;margin:0;padding:0">${steps}</ol>
+   <h3 style="font-size:.95rem">${t("cstatus.stillNeeded")}</h3>${need}
+   <h3 style="font-size:.95rem">${t("cstatus.caNote")}</h3><p>${st.note ? caEsc(st.note) : `<span class="muted">${t("cstatus.noNote")}</span>`}</p>
+   <p class="muted" style="font-size:.8rem">${t("cstatus.disclaimer")}</p><p class="muted" style="font-size:.8rem">${t("cstatus.footer")}</p>
+   <div class="cs-noprint" style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn" type="button" data-st-print="${c.id}">${ic("down")}${t("cstatus.printBtn")}</button><button class="btn ghost" type="button" data-st-view="0">${t("cstatus.closeBtn")}</button></div></section>`;
+}
+function caStatusView() {
+  const cfg = CA_STATUS_CONFIG, vc = C.find((x) => x.id === caStatView);
+  const rows = C.map((c) => {
+    const st = caStatOf(c);
+    const sel = `<select class="sel" data-st-stage="${c.id}" aria-label="${caEsc(t("cstatus.stageLabel", { name: c.name }))}">${cfg.stages.map((k) => `<option value="${k}"${st.stage === k ? " selected" : ""}>${t("cstatus.stage." + k)}</option>`).join("")}</select><div class="muted" style="font-size:.74rem">${st.edited ? t("cstatus.edited") : t("cstatus.suggested")}</div>`;
+    const note = `<input class="sel" type="text" maxlength="${cfg.noteMax}" data-st-note="${c.id}" value="${caEsc(st.note)}" placeholder="${caEsc(t("cstatus.messagePlaceholder"))}" aria-label="${caEsc(t("cstatus.messageLabel", { name: c.name }))}">`;
+    const acts = `<button class="btn ghost sm" type="button" data-st-view="${c.id}">${t("cstatus.viewBtn")}</button><button class="btn ghost sm" type="button" data-yreview="${c.id}">${ic("down")}${t("yreview.button")}</button>`;
+    return { c, sel, note, acts };
+  });
+  return `<div class="cs-admin"><div class="ph"><h1>${t("cstatus.title")}</h1><span class="pill">${t("cstatus.demo")}</span></div><p class="muted" style="font-size:.86rem">${t("cstatus.sub")}</p>
+  <div class="grid" role="region" aria-label="${t("cstatus.title")}" style="max-height:none"><table><thead><tr><th>${t("cstatus.colClient")}</th><th>${t("cstatus.colStage")}</th><th>${t("cstatus.colMessage")}</th><th>${t("cstatus.colAction")}</th></tr></thead><tbody>${rows.map((r) => `<tr data-st-row="${r.c.id}"><td class="cname">${caEsc(r.c.name)}</td><td>${r.sel}</td><td>${r.note}</td><td><div style="display:flex;gap:.3rem;flex-wrap:wrap">${r.acts}</div></td></tr>`).join("")}</tbody></table></div>
+  <div class="cards" role="list" aria-label="${t("cstatus.title")}">${rows.map((r) => `<article class="ccard" role="listitem" data-st-row="${r.c.id}"><div class="h"><b>${caEsc(r.c.name)}</b></div><span>${r.sel}</span><span>${r.note}</span><div style="display:flex;gap:.3rem;flex-wrap:wrap">${r.acts}</div></article>`).join("")}</div>
+  <p class="muted" style="font-size:.78rem">${t("cstatus.sampleNote")}</p></div>${vc ? caStatClientView(vc) : ""}${CA_DISC}`;
+}
+// Year in review: counts from AUDIT + engine figures. PAN last 4 only.
+function caMaskPan4(p) { return "XXXXXX" + String(p).replace(/[^A-Za-z0-9]/g, "").slice(-4); }
+function buildYearReviewData(c, now = Date.now()) {
+  const fmt = (ms) => new Date(ms).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const mine = AUDIT.filter((a) => a.c === c.id), n = (ty) => mine.filter((a) => a.type === ty).length;
+  const open = Q.filter((q) => q.c === c.id && q.state === "open");
+  const flags = [];
+  mine.filter((a) => a.flag).forEach((a) => flags.push(t("yreview.flagReceipt", { receipt: a.what, flag: a.flag })));
+  open.filter((q) => caRuleFlag(q)).forEach((q) => flags.push(t("yreview.flagReceipt", { receipt: q.who, flag: caRuleFlag(q) })));
+  const ef = caElectionFlag(c); if (ef) flags.push(t("yreview.flagRegime", { elected: c.elected, better: ef.better }));
+  if (caLandlordFlag(c)) flags.push(t("yreview.flagLandlord", { rent: "Rs. " + Math.round(c.rent).toLocaleString("en-IN") }));
+  const d = clientDocs(c), r = clientReturn(c), nt = caNotices.filter((x) => x.c === c.id), ntDone = nt.filter((x) => x.status !== "open").length;
+  const counts = [[t("yreview.receiptsReviewed"), String(mine.length)], [t("yreview.receiptsApproved"), String(n("approve"))], [t("yreview.receiptsQueried"), String(n("query"))], [t("yreview.receiptsRejected"), String(n("reject"))], [t("yreview.receiptsOpen"), String(open.length)], [t("yreview.flagsCaught"), String(flags.length)], [t("yreview.docsOnFile"), d.need.length ? t("yreview.docsOf", { got: d.got.length, need: d.need.length }) : "–"]];
+  const oldBetter = c.rc > 0 && regimeForClient(c).better === "Old";
+  const room = oldBetter ? caRoomSecs().map((s) => [caRoomName(s), "Rs. " + Math.round(c[s.key]).toLocaleString("en-IN"), "Rs. " + Math.round(s.cap).toLocaleString("en-IN"), "Rs. " + Math.round(Math.max(0, s.cap - c[s.key])).toLocaleString("en-IN")]) : [];
+  return {
+    title: t("yreview.title", { name: c.name, fy: TaxEngine.FY_LABEL }), generated: t("yreview.generated", { time: fmt(now), who: CA_USER }),
+    demo: c.imported ? "" : t("yreview.demo"), pan: t("yreview.pan", { pan: caMaskPan4(c.pan) }), intro: t("yreview.intro"),
+    counts, deadlines: [t("yreview.returnDue", { form: r.form, date: r.date }), nt.length ? t("yreview.noticesMet", { done: ntDone, total: nt.length }) : t("yreview.noticesNone")],
+    flags, flagsNone: t("yreview.flagsNone"), room, roomNone: t("yreview.roomNewRegime"), roomNote: t("yreview.roomNote"), footer: t("yreview.footer"),
+    filename: "TaxPlot_Year_In_Review_" + c.name.replace(/\W+/g, "_") + ".pdf",
+  };
+}
+async function caExportYearReview(id) {
+  const c = C.find((x) => x.id === id); if (!c) return;
+  const data = buildYearReviewData(c);
+  try {
+    if (!(window.jspdf && window.jspdf.jsPDF)) await caLoadScript(CA_PDF_LIBS.jspdf);
+    if (!(window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable)) await caLoadScript(CA_PDF_LIBS.autotable);
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "a4" });
+    let y = 50; const para = (txt) => { const w = doc.splitTextToSize(txt, 515); if (y + w.length * 12 > 780) { doc.addPage(); y = 50; } doc.text(w, 40, y); y += w.length * 12 + 2; };
+    const head = (txt) => { y += 8; if (y > 760) { doc.addPage(); y = 50; } doc.setFont(undefined, "bold"); doc.text(txt, 40, y); doc.setFont(undefined, "normal"); y += 14; };
+    doc.setFontSize(16); doc.setFont(undefined, "bold"); doc.text(data.title, 40, y); y += 20;
+    doc.setFontSize(9); doc.setFont(undefined, "normal"); para(data.generated); para(data.pan); if (data.demo) para(data.demo); y += 4; para(data.intro);
+    head(t("yreview.headerCounts"));
+    doc.autoTable({ startY: y, margin: { left: 40, right: 40 }, head: [[t("yreview.colItem"), t("yreview.colValue")]], body: data.counts, theme: "grid", styles: { fontSize: 8 }, headStyles: { fillColor: [40, 40, 40] } }); y = doc.lastAutoTable.finalY + 8;
+    head(t("yreview.deadlinesHeader")); data.deadlines.forEach(para);
+    head(t("yreview.flagsHeader")); (data.flags.length ? data.flags : [data.flagsNone]).forEach(para);
+    head(t("yreview.roomHeader"));
+    if (data.room.length) { doc.autoTable({ startY: y, margin: { left: 40, right: 40 }, head: [[t("yreview.roomColSection"), t("yreview.roomColLogged"), t("yreview.roomColCap"), t("yreview.roomColLeft")]], body: data.room, theme: "grid", styles: { fontSize: 8 }, headStyles: { fillColor: [40, 40, 40] } }); y = doc.lastAutoTable.finalY + 8; para(data.roomNote); } else para(data.roomNone);
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(data.footer, 40, 810, { maxWidth: 515 }); doc.setTextColor(0); }
+    doc.save(data.filename);
+  } catch (e) { console.error("Year in review PDF failed:", e); caToast(t("yreview.failed")); }
+}
+function caStatPrint() { document.body.classList.add("print-status"); const done = () => document.body.classList.remove("print-status"); window.addEventListener("afterprint", done, { once: true }); try { window.print(); } catch (e) { done(); } }
+
 // ---------- render ----------
 function caRender() {
   // Keep keyboard focus on the control that was just pressed (issue #11): the view is rebuilt
@@ -572,8 +853,8 @@ function caRender() {
   let focusSel = "", focusIdx = -1;
   const ae = document.activeElement;
   if (ae && ae.dataset) {
-    for (const k of ["qall", "room", "bulk", "rulewin", "season", "filt", "sort", "go", "set", "toggle"]) {
-      if (ae.dataset[k] !== undefined) { focusSel = `[data-${k}="${ae.dataset[k]}"]` + (k === "set" ? `[data-val="${ae.dataset.val}"]` : ""); focusIdx = [...document.querySelectorAll(focusSel)].indexOf(ae); break; }
+    for (const k of ["qall", "room", "bulk", "rulewin", "season", "imp", "ntcAdd", "ntcDel", "ntcStatus", "evnotice", "stStage", "stNote", "stView", "stPrint", "yreview", "filt", "sort", "go", "set", "toggle"]) {
+      if (ae.dataset[k] !== undefined) { focusSel = `[data-${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}="${ae.dataset[k]}"]` + (k === "set" ? `[data-val="${ae.dataset.val}"]` : ""); focusIdx = [...document.querySelectorAll(focusSel)].indexOf(ae); break; }
     }
   }
   document.getElementById("rail").innerHTML = CA_NAV.map(([g, items]) => `<span class="grp eyebrow">${g}</span>` + items.map(([k, i, t]) => `<button class="nav" type="button" data-go="${k}"${caView === k ? ' aria-current="page"' : ""}>${ic(i)}${t}${k === "queue" ? `<span class="badge">${Q.filter((q) => q.state === "open").length}</span>` : ""}</button>`).join("")).join("");
@@ -595,7 +876,7 @@ function caAct(type, id) {
   const q = Q.find((x) => x.id === id);
   if (!q) return;
   q.state = type;
-  AUDIT.push({ c: q.c, type, user: CA_USER, at: Date.now(), reason: type === "approve" ? "" : caReason.trim(), what: q.who, sec: q.sec });
+  AUDIT.push({ c: q.c, type, user: CA_USER, at: Date.now(), reason: type === "approve" ? "" : caReason.trim(), what: q.who, sec: q.sec, flag: caRuleFlag(q) });
   caReason = "";
   const open = caQVisible();
   caQSel = open[0] ? open[0].id : undefined;
@@ -604,6 +885,13 @@ function caAct(type, id) {
   caRender();
 }
 document.addEventListener("click", (e) => {
+  const im = e.target.closest("[data-imp]"); if (im) { const a = im.dataset.imp; if (a === "template") caImportDownloadTemplate(); else if (a === "import") caImportCommit(); else if (a === "clear") { caImp = null; caImpErr = ""; caRender(); } else if (a === "remove") { if (!caImpConfirm) { caImpConfirm = true; caRender(); } else { const n = C.filter((c) => c.imported).length; C = C.filter((c) => !c.imported); caNotices = caNotices.filter((x) => C.some((c) => c.id === x.c)); caNtcSave(); caImpConfirm = false; caImportSave(); caToast(t("import.removed")); caSel = (C[0] || {}).id; caRender(); } } return; }
+  if (e.target.closest("[data-ntc-add]")) { caNtcAdd(); return; }
+  const nd = e.target.closest("[data-ntc-del]"); if (nd) { caNotices = caNotices.filter((x) => x.id !== +nd.dataset.ntcDel); caNtcSave(); caToast(t("notice.deleted")); caRender(); return; }
+  const en = e.target.closest("[data-evnotice]"); if (en) { caNtcEvidence(+en.dataset.evnotice); return; }
+  const sv = e.target.closest("[data-st-view]"); if (sv) { caStatView = +sv.dataset.stView; caRender(); return; }
+  if (e.target.closest("[data-st-print]")) { caStatPrint(); return; }
+  const yr = e.target.closest("[data-yreview]"); if (yr) { caExportYearReview(+yr.dataset.yreview); return; }
   const rr = e.target.closest("[data-readiness]"); if (rr) { caExportReadinessRecord(+rr.dataset.readiness); return; }
   const ev = e.target.closest("[data-evidence]"); if (ev) { caExportEvidencePack(+ev.dataset.evidence); return; }
   const qa = e.target.closest("[data-qall]"); if (qa) { caQShowAll = !caQShowAll; caRender(); return; }
@@ -621,11 +909,19 @@ document.addEventListener("click", (e) => {
   const qr = e.target.closest("[data-qrow]"); if (qr) { caQSel = +qr.dataset.qrow; caRender(); return; }
   const st = e.target.closest("[data-set]"); if (st) { caSet(st.dataset.set, st.dataset.val); return; }
   const tg = e.target.closest("[data-toggle]"); if (tg) { caSet(tg.dataset.toggle, !CS[tg.dataset.toggle]); return; }
-  const t = e.target.closest("[data-toast]"); if (t) { caToast(t.dataset.toast); return; }
+  const tt = e.target.closest("[data-toast]"); if (tt) { caToast(tt.dataset.toast); return; }
   const a = e.target.closest("[data-act]"); if (a && a.dataset.act === "reset") { Object.assign(CS, CA_DEFAULTS); caSave(); caApplyAppearance(); caRender(); caToast(t("common.settingsReset")); }
 });
 document.getElementById("theme-quick").addEventListener("click", () => { const order = ["auto", "light", "dark"]; caSet("theme", order[(order.indexOf(CS.theme) + 1) % 3]); caToast(t("theme.label", { theme: CS.theme })); });
-document.addEventListener("change", (e) => { if (e.target.id === "ca-lowConf") caSet("lowConf", +e.target.value); });
+document.addEventListener("change", (e) => {
+  if (e.target.id === "ca-lowConf") caSet("lowConf", +e.target.value);
+  if (e.target.id === "ca-import-file") { caImportFile(e.target.files && e.target.files[0]); return; }
+  const ss = e.target.dataset && e.target.dataset.stStage; if (ss) { if (CA_STATUS_CONFIG.stages.includes(e.target.value)) { caStatSet(+ss, { stage: e.target.value }); caRender(); } return; }
+  const sn = e.target.dataset && e.target.dataset.stNote; if (sn) { caStatSet(+sn, { note: e.target.value.slice(0, CA_STATUS_CONFIG.noteMax) }); caRender(); return; }
+  const ns = e.target.dataset && e.target.dataset.ntcStatus; if (ns) { const n = caNotices.find((x) => x.id === +ns); if (n && CA_NOTICE_CONFIG.statuses.includes(e.target.value)) { n.status = e.target.value; caNtcSave(); caRender(); } }
+});
+document.addEventListener("input", (e) => { const f = e.target.dataset && e.target.dataset.nf; if (f in caNtcDraft) caNtcDraft[f] = e.target.value; });
+document.addEventListener("change", (e) => { const f = e.target.dataset && e.target.dataset.nf; if (f in caNtcDraft) caNtcDraft[f] = e.target.value; });
 document.addEventListener("input", (e) => { if (e.target && e.target.id === "qreason") caReason = e.target.value; });
 document.getElementById("q").addEventListener("input", (e) => { caQuery = e.target.value; if (caView !== "clients") caView = "clients"; caRender(); });
 document.addEventListener("keydown", (e) => {
@@ -651,5 +947,6 @@ function caToast(m) {
   clearTimeout(caToastTimer);
   caToastTimer = setTimeout(() => elx.classList.remove("show"), 2000);
 }
+caImportLoad(); caNtcLoad(); caStatLoad(); syncReviewCounts();
 caApplyAppearance();
 caRender();

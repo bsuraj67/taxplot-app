@@ -592,3 +592,17 @@ textarea{width:100%; min-height:4.5rem; background:var(--surf2); border:1px soli
   .bulk .bulk-list .row{flex-wrap:wrap; gap:.4rem;}
   .bulk .bulk-list a.btn{min-height:44px; display:inline-flex; align-items:center;}
 }
+
+/* Monthly payments quick-log (Overview) */
+.rec-row{display:flex;gap:.6rem;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:.6rem 0;border-top:1px solid var(--line);}
+#recurring-card summary{cursor:pointer;font-weight:600;margin-top:.5rem;}
+.cam-warn{max-width:86%; margin:0; text-align:center; font-size:13px; line-height:1.5; color:var(--cam-ink); background:color-mix(in srgb, var(--warn, #b45309) 30%, transparent); padding:8px 12px; border-radius:10px;}
+.freeze-actions{flex-wrap:wrap; justify-content:center;}
+
+/* CA client status page: print only the client-facing view */
+@media print {
+  body.print-status .top, body.print-status .rail, body.print-status .statusbar, body.print-status .toast,
+  body.print-status .cs-admin, body.print-status .cs-noprint, body.print-status .disc { display: none !important; }
+  body.print-status *{visibility:visible !important;}
+  body.print-status .work, body.print-status .content, body.print-status .pane { display: block !important; overflow: visible !important; }
+}

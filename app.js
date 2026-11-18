@@ -162,6 +162,8 @@ var STATE = {
   glossaryOpen: null, // term key, while its bottom sheet is open (task 4b)
   glossaryQuery: "",
   familyMembers: [], // { id, name, relation: "Parent" | "Child" } -- task 7 family profiles
+  recurring: [], // { id, vendor, category, amount, day, landlordPan, lastMonth } -- monthly one-tap log, on device only
+  vendorMemory: {}, // { [vendorKey]: { vendor, category } } -- "always suggest this tag", on device only
   toast: null,
   dpdpNoticeOpen: false, // the data notice sheet, while open (task 5)
 };
@@ -244,6 +246,29 @@ function getComparison() {
     hraContext: { rentPaidAnnual: rentPaidAnnual(), city: STATE.onboarding.city },
     section126Options: STATE.onboarding.section126,
   });
+}
+// Estimated saving for one receipt (draft or saved), on the user's regime.
+// Pure engine call: all figures come from TaxEngine / TAX_CONFIG.
+function receiptSaving(r) {
+  const regime = STATE.regime === "new" || !STATE.regime ? "new" : "old";
+  return TaxEngine.estimateReceiptSaving({
+    receipt: r, receipts: STATE.receipts, regime, grossIncome: currentIncome(),
+    hraContext: { city: STATE.onboarding.city }, section126Options: STATE.onboarding.section126,
+  });
+}
+function savingNoteHTML(r) {
+  if (!r || !r.category || !(Number(r.amount) > 0)) return "";
+  const e = receiptSaving(r);
+  if (e.reason === "notCounted") return "";
+  const msg = e.reason === "newRegime" ? (e.ifOld > 0 ? t("saving.newRegimeOld", { amount: inr(e.ifOld) }) : t("saving.newRegime"))
+    : e.reason ? t("saving." + e.reason) : t("saving.line", { amount: inr(e.saving) });
+  return `<p class="note" data-saving="${e.saving}">${msg}</p><p class="meta">${t("saving.note")}</p>`;
+}
+function savingTableText(r) {
+  if (!r.category || !(Number(r.amount) > 0)) return "";
+  const e = receiptSaving(r);
+  if (e.reason === "notCounted" || e.reason === "notModelled") return "";
+  return e.saving > 0 ? t("saving.table", { amount: inr(e.saving) }) : t("saving.tableNone");
 }
 // Caps/deductions only exist under the Old Regime. "compare" shows both
 // numbers but still tracks caps the old-regime way underneath.
@@ -474,9 +499,16 @@ function skipAutoDetect() {
 // landing on Overview -- it's why the user opened TaxPlot just now.
 function enterAppOrSharedReceipt() {
   if (PENDING_SHARED_PHOTO) {
-    STATE.camera = { phase: "freeze", photo: PENDING_SHARED_PHOTO };
+    const raw = PENDING_SHARED_PHOTO;
+    STATE.camera = { phase: "freeze", photo: raw, pages: [] };
     PENDING_SHARED_PHOTO = null;
     show("s-camera");
+    // Shrink + blur-check the shared photo too (best effort; the original stays if it can't be read).
+    try {
+      fetch(raw).then((r) => r.blob()).then(processCaptureFile).then((r) => {
+        if (STATE.camera.phase === "freeze" && STATE.camera.photo === raw) { STATE.camera = { phase: "freeze", photo: r.dataUrl, pages: [], blurry: r.blurry }; paintCamera(); }
+      }).catch(() => {});
+    } catch (e) {}
     return;
   }
   showApp("overview");
@@ -559,7 +591,7 @@ function qcEditOrSplit(id) {
 // SCREEN — Camera
 // ============================================================
 function gotoCamera() {
-  STATE.camera = { phase: "idle", photo: null };
+  STATE.camera = { phase: "idle", photo: null, pages: [] };
   show("s-camera");
   // DPDP notice (task 5): shown once, before the very first photo -- the
   // sheet's backdrop covers the whole screen, so the shutter/gallery
@@ -590,7 +622,7 @@ function paintCamera() {
     view.innerHTML = `
       <button class="back-arrow" data-action="goto-overview" aria-label="${t("nav.overview")}">←</button>
       <div class="flash">⚡</div>
-      <div class="cam-overlay-text">${t("camera.overlayText")}</div>
+      <div class="cam-overlay-text">${(cam.pages || []).length ? t("camera.pageSaved", { n: cam.pages.length }) : t("camera.overlayText")}</div>
       <div class="receipt-outline">${t("camera.outlineHint")}</div>
       <input type="file" accept="image/*" capture="environment" id="camera-input" class="visually-hidden" data-action="file-selected" />
       <input type="file" accept="image/*" id="gallery-input" class="visually-hidden" data-action="file-selected" />
@@ -604,9 +636,12 @@ function paintCamera() {
     view.innerHTML = `
       <div class="freeze-frame">
         <img class="freeze-thumb" src="${cam.photo}" alt="Captured receipt" />
+        ${cam.blurry ? `<p class="cam-warn" role="status">${t("camera.blurWarning")}</p>` : ""}
+        ${(cam.pages || []).length >= CAPTURE_MAX_PAGES - 1 ? `<p class="cam-warn">${t("camera.maxPages")}</p>` : ""}
         <div class="freeze-actions">
-          <button class="retake" data-action="retake-photo">${t("camera.retake")}</button>
-          <button class="use" data-action="use-photo">${t("camera.usePhoto")}</button>
+          <button class="retake" data-action="retake-photo">${cam.blurry ? t("camera.retakeBlur") : t("camera.retake")}</button>
+          ${(cam.pages || []).length < CAPTURE_MAX_PAGES - 1 ? `<button class="retake" data-action="add-page">${t("camera.addPage")}</button>` : ""}
+          <button class="use" data-action="use-photo">${(cam.pages || []).length ? t("camera.usePages", { n: cam.pages.length + 1 }) : t("camera.usePhoto")}</button>
         </div>
       </div>`;
   } else if (cam.phase === "loading") {
@@ -614,12 +649,15 @@ function paintCamera() {
       <img class="freeze-thumb" src="${cam.photo}" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.5; border-radius:0;" alt="" />
       <div class="loading-strip">${t("camera.loading")}</div>
     `;
+  } else if (cam.phase === "preparing") {
+    view.innerHTML = `<div class="loading-strip" role="status">${t("camera.preparing")}</div>`;
   } else if (cam.phase === "fallback") {
+    const ek = cam.errorKey;
     view.innerHTML = `
       <div class="cam-fallback">
         <div style="font-size:28px;">🤔</div>
-        <div style="font-weight:700; font-size:16px;">${t("camera.fallbackTitle")}</div>
-        <p>${t("camera.fallbackSub")}</p>
+        <div style="font-weight:700; font-size:16px;">${ek ? t("camera." + ek + "Title") : t("camera.fallbackTitle")}</div>
+        <p>${ek ? t("camera." + ek + "Sub") : t("camera.fallbackSub")}</p>
         <div class="row">
           <button class="retry" data-action="retake-photo">${t("camera.retake")}</button>
           <button class="manual" data-action="enter-manually">${t("camera.manual")}</button>
@@ -629,14 +667,114 @@ function paintCamera() {
 }
 function openCameraInput() { el("camera-input").click(); }
 function openGalleryInput() { el("gallery-input").click(); }
+// ---------- Capture quality: downscale + JPEG, blur check, multi-page ----------
+// All on this device; nothing is uploaded. Sizes/thresholds are image settings, not tax figures.
+const CAPTURE_MAX_DIM = 1600;      // longest side after downscaling (px)
+const CAPTURE_JPEG_QUALITY = 0.8;
+const CAPTURE_MAX_PAGES = 4;
+const CAPTURE_STITCH_WIDTH = 1200; // width every page is scaled to when pages are joined
+const BLUR_SAMPLE_DIM = 480;       // photo is shrunk to this before the sharpness check
+var BLUR_THRESHOLD = 60;         // Laplacian variance below this = "looks blurry" (advisory only; tune on real phones)
+// Scale (w,h) down so the longest side is at most max; never scales up.
+function fitWithin(w, h, max) {
+  const k = Math.min(1, max / Math.max(w, h));
+  return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
+}
+function grayFromRGBA(data, w, h) {
+  const g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+  return g;
+}
+// Variance of the 4-neighbour Laplacian: low on blurry images, high on crisp text.
+function sharpnessScore(gray, w, h) {
+  if (w < 3 || h < 3) return Infinity;
+  let sum = 0, sumSq = 0, n = 0;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x;
+    const v = gray[i - 1] + gray[i + 1] + gray[i - w] + gray[i + w] - 4 * gray[i];
+    sum += v; sumSq += v * v; n++;
+  }
+  const mean = sum / n;
+  return sumSq / n - mean * mean;
+}
+function decodeImageSource(src) { // File/Blob -> Promise<{img, w, h}>; rejects if this browser cannot decode it
+  return new Promise((resolve, reject) => {
+    if (typeof createImageBitmap === "function") {
+      createImageBitmap(src).then((img) => resolve({ img, w: img.width, h: img.height })).catch(() => viaImageElement());
+    } else viaImageElement();
+    function viaImageElement() {
+      if (typeof Image === "undefined" || typeof URL === "undefined" || !URL.createObjectURL) return reject(new Error("no decoder"));
+      const url = URL.createObjectURL(src), im = new Image();
+      im.onload = () => { URL.revokeObjectURL(url); im.naturalWidth ? resolve({ img: im, w: im.naturalWidth, h: im.naturalHeight }) : reject(new Error("empty image")); };
+      im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode failed")); };
+      im.src = url;
+    }
+  });
+}
+// Blob/File -> Promise<{ dataUrl (JPEG), blurry, score }>
+function processCaptureFile(file) {
+  return decodeImageSource(file).then(({ img, w, h }) => {
+    const out = fitWithin(w, h, CAPTURE_MAX_DIM);
+    const c = document.createElement("canvas"); c.width = out.w; c.height = out.h;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("no canvas");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.w, out.h); // JPEG has no transparency
+    ctx.drawImage(img, 0, 0, out.w, out.h);
+    const dataUrl = c.toDataURL("image/jpeg", CAPTURE_JPEG_QUALITY);
+    if (!/^data:image\/jpeg/.test(dataUrl)) throw new Error("jpeg not supported");
+    let score = Infinity, blurry = false;
+    try {
+      const sm = fitWithin(out.w, out.h, BLUR_SAMPLE_DIM);
+      const sc = document.createElement("canvas"); sc.width = sm.w; sc.height = sm.h;
+      const sx = sc.getContext("2d"); sx.drawImage(c, 0, 0, sm.w, sm.h);
+      score = sharpnessScore(grayFromRGBA(sx.getImageData(0, 0, sm.w, sm.h).data, sm.w, sm.h), sm.w, sm.h);
+      blurry = score < BLUR_THRESHOLD;
+    } catch (e) { /* advisory check only: skip silently */ }
+    if (img.close) img.close();
+    return { dataUrl, blurry, score };
+  });
+}
+// Join several page photos top-to-bottom into one JPEG, so the rest of the app still handles a single photo.
+function stitchPages(dataUrls) {
+  return Promise.all(dataUrls.map((u) => new Promise((resolve, reject) => {
+    const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error("page failed")); im.src = u;
+  }))).then((imgs) => {
+    const W = Math.min(CAPTURE_STITCH_WIDTH, Math.max(...imgs.map((i) => i.naturalWidth)));
+    const hs = imgs.map((i) => Math.round(i.naturalHeight * W / i.naturalWidth));
+    const c = document.createElement("canvas"); c.width = W; c.height = hs.reduce((a, b) => a + b, 0);
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    let y = 0; imgs.forEach((im, i) => { ctx.drawImage(im, 0, y, W, hs[i]); y += hs[i]; });
+    return c.toDataURL("image/jpeg", CAPTURE_JPEG_QUALITY);
+  });
+}
 function onFileSelected(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => { STATE.camera = { phase: "freeze", photo: e.target.result }; paintCamera(); };
-  reader.readAsDataURL(file);
+  const pages = STATE.camera.pages || [];
+  STATE.camera = { phase: "preparing", photo: null, pages };
+  paintCamera();
+  processCaptureFile(file)
+    .then((r) => { STATE.camera = { phase: "freeze", photo: r.dataUrl, pages, blurry: r.blurry }; paintCamera(); })
+    .catch(() => { STATE.camera = { phase: "fallback", photo: null, pages, errorKey: "decodeFailed" }; paintCamera(); });
+  try { input.value = ""; } catch (e) {} // so the same file can be chosen again
 }
-function retakePhoto() { STATE.camera = { phase: "idle", photo: null }; paintCamera(); }
+function retakePhoto() { STATE.camera = { phase: "idle", photo: null, pages: STATE.camera.pages || [] }; paintCamera(); }
+function addAnotherPage() {
+  const cam = STATE.camera, pages = (cam.pages || []).concat(cam.photo ? [cam.photo] : []);
+  STATE.camera = { phase: "idle", photo: null, pages };
+  paintCamera();
+}
+// "Use this photo" when pages were added: join them first, then carry on exactly as for one photo.
+function useCapturedPhotos() {
+  const cam = STATE.camera;
+  if (!(cam.pages && cam.pages.length)) { usePhoto(); return; }
+  const all = cam.pages.concat([cam.photo]);
+  STATE.camera = { phase: "preparing", photo: null, pages: [] };
+  paintCamera();
+  stitchPages(all)
+    .then((u) => { STATE.camera = { phase: "freeze", photo: u, pages: [] }; usePhoto(); })
+    .catch(() => { STATE.camera = { phase: "fallback", photo: null, pages: [], errorKey: "stitchFailed" }; paintCamera(); });
+}
 // ?mock=1 makes the simulated extraction explicit and opt-in (for tests/demos),
 // instead of every photo silently getting fake data. See TODO(backend) above.
 function isMockExtractionMode() {
@@ -727,6 +865,8 @@ function renderReview() {
       </select></label>
       ${mapped ? `<div class="applies-chip ${mapped.group === "skip" ? "skip" : ""}">${mapped.label ? t("review.appliesTo", { label: mapped.label }) : t("review.notCountedToward")}</div>` : ""}
     </div>
+    <div id="vendor-memory">${vendorMemoryHTML(d)}</div>
+    <div id="saving-est">${savingNoteHTML(d)}</div>
     <div id="rent-helper-fields">${rentHelperFields(d)}</div>
     ${paymentModeField(d)}
     ${familyMemberField(d)}
@@ -749,17 +889,25 @@ function renderReview() {
 // Section 393 (was 194-IB) threshold -- all read from TAX_CONFIG, nothing
 // hardcoded here.
 const RENT_RELATIONSHIP_OPTIONS = ["Not a relative", "Parent", "Spouse", "Sibling", "Other relative"];
-function rentHelperFields(d) {
-  if (d.category !== "Rent (for HRA)") return "";
-  const monthly = Number(d.amount) || 0;
+// TDS threshold / landlord-PAN notes for a monthly rent figure. Shared by the
+// Review screen and the monthly quick-log so both show the same checks.
+function rentNotesHTML(monthly, pan) {
   const tds = TaxEngine.TAX_CONFIG.rentTDS;
   const panRequired = monthly * 12 > TaxEngine.TAX_CONFIG.landlordPanThresholdAnnualRent;
   const tdsApplies = monthly > tds.thresholdMonthly;
+  return {
+    pan: panRequired ? `<p class="note">${t("review.rentPanRequiredNote", { amount: inr(TaxEngine.TAX_CONFIG.landlordPanThresholdAnnualRent) })}</p>` : "",
+    tds: tdsApplies ? `<p class="note flag">${t("review.rentTdsWarning", { threshold: inr(tds.thresholdMonthly), rate: Math.round(tds.ratePanProvided * 100), noPanRate: Math.round(tds.rateNoPan * 100), sectionNew: tds.sectionNew, sectionOld: tds.sectionOld })}</p>` : "",
+  };
+}
+function rentHelperFields(d) {
+  if (d.category !== "Rent (for HRA)") return "";
+  const notes = rentNotesHTML(Number(d.amount) || 0, d.landlordPan);
   return `
     <div class="field">
       <label>${t("review.rentLandlordPanLabel")}
       <input class="input" data-field="landlordPan" value="${escAttr(d.landlordPan)}" placeholder="${t("review.rentLandlordPanPlaceholder")}" /></label>
-      ${panRequired ? `<p class="note">${t("review.rentPanRequiredNote", { amount: inr(TaxEngine.TAX_CONFIG.landlordPanThresholdAnnualRent) })}</p>` : ""}
+      ${notes.pan}
     </div>
     <div class="field">
       <label>${t("review.rentRelationshipLabel")}
@@ -768,7 +916,7 @@ function rentHelperFields(d) {
         ${RENT_RELATIONSHIP_OPTIONS.map((o) => `<option value="${escAttr(o)}" ${d.landlordRelationship === o ? "selected" : ""}>${o}</option>`).join("")}
       </select></label>
     </div>
-    ${tdsApplies ? `<p class="note flag">${t("review.rentTdsWarning", { threshold: inr(tds.thresholdMonthly), rate: Math.round(tds.ratePanProvided * 100), noPanRate: Math.round(tds.rateNoPan * 100), sectionNew: tds.sectionNew, sectionOld: tds.sectionOld })}</p>` : ""}
+    ${notes.tds}
     <p class="note">${t("review.rentPanAadhaarReminder")}</p>
   `;
 }
@@ -847,6 +995,49 @@ function quickChips(d) {
   const chips = QUICK_CATEGORIES.map(([c, k]) => `<button type="button" class="chip${d.category === c ? " on" : ""}" data-action="quick-cat" data-value="${escAttr(c)}" aria-pressed="${d.category === c}">${t(k)}</button>`).join("");
   return `<div class="field"><div class="meta">${t("review.quickLabel")}</div><div style="display:flex;gap:.4rem;flex-wrap:wrap">${sameAsLast}${chips}</div></div>`;
 }
+// ---------- Vendor-to-category memory (on device) ----------
+// The user opts in per vendor; we only ever SUGGEST the tag on a new receipt.
+// The user always confirms. Stored in the same on-device snapshot as receipts.
+function vendorKey(v) { return String(v || "").trim().toLowerCase().replace(/\s+/g, " "); }
+function vendorMemoryFor(vendor) {
+  const m = STATE.vendorMemory[vendorKey(vendor)];
+  return m && TaxEngine.CATEGORY_MAP[m.category] ? m : null;
+}
+function rememberVendor(vendor, category) {
+  const k = vendorKey(vendor);
+  if (!k || !TaxEngine.CATEGORY_MAP[category] || category === "Not tax-related / Skip this receipt") return false;
+  STATE.vendorMemory[k] = { vendor: String(vendor).trim(), category };
+  return true;
+}
+function forgetVendor(key) { delete STATE.vendorMemory[key]; }
+// Suggestion chip (remembered category differs from the draft's) + opt-in checkbox.
+function vendorMemoryHTML(d) {
+  if (!d || !vendorKey(d.vendor)) return "";
+  const mem = vendorMemoryFor(d.vendor);
+  let out = "";
+  if (mem && mem.category !== d.category) {
+    out += `<div class="field"><p class="note">${t("vendorMem.hint", { vendor: esc(mem.vendor), category: esc(mem.category) })}</p>
+      <button type="button" class="chip" data-action="use-remembered">${t("vendorMem.use")}</button>
+      <p class="meta">${t("vendorMem.hintNote")}</p></div>`;
+  }
+  const canRemember = d.category && d.category !== "Not tax-related / Skip this receipt" && !(mem && mem.category === d.category);
+  if (canRemember) {
+    out += `<div class="field"><label><input type="checkbox" data-memfield="rememberVendor" ${d.rememberVendor ? "checked" : ""} /> ${t("vendorMem.remember", { vendor: esc(d.vendor.trim()), category: esc(d.category) })}</label>
+      <p class="meta">${t("vendorMem.rememberNote")}</p></div>`;
+  }
+  return out;
+}
+function refreshVendorMemory() { const n = el("vendor-memory"); if (n && STATE.reviewDraft) n.innerHTML = vendorMemoryHTML(STATE.reviewDraft); }
+function vendorMemorySection() {
+  const rows = Object.entries(STATE.vendorMemory).map(([k, m]) => {
+    const mapped = TaxEngine.CATEGORY_MAP[m.category];
+    return `<div class="row"><div><span class="lbl">${esc(m.vendor)}</span><p class="help">${esc(mapped && mapped.label ? mapped.label : m.category)}</p></div><div><button type="button" class="btn ghost" data-act="forget-vendor" data-id="${escAttr(k)}">${t("vendorMem.forget")}</button></div></div>`;
+  }).join("");
+  return `<section class="group" id="s-vendors"><header><h2 tabindex="-1">${t("vendorMem.header")}</h2><p>${t("vendorMem.sub")}</p></header>
+    ${rows || `<p class="meta">${t("vendorMem.none")}</p>`}
+    ${rows ? `<div class="row"><div></div><div><button type="button" class="btn ghost" data-act="forget-all-vendors">${t("vendorMem.forgetAll")}</button></div></div>` : ""}
+   </section>`;
+}
 function saveReceipt(addAnother) {
   const d = STATE.reviewDraft;
   if (!d.vendor.trim()) return showToast(t("review.toastVendor"));
@@ -867,6 +1058,7 @@ function saveReceipt(addAnother) {
   const warningKey = ruleWarnings.length && RULE_WARNING_KEYS[ruleWarnings[0]];
   showToast(warningKey ? t(warningKey) : mapped && mapped.label ? t("quickconfirm.savedTowardToast", { label: mapped.label.split(" — ")[0] }) : t("review.savedToast"));
   STATE.lastEntry = { vendor: d.vendor.trim(), category: d.category };
+  if (d.rememberVendor && rememberVendor(d.vendor, d.category)) showToast(t("vendorMem.saved"));
   STATE.reviewDraft = null;
   if (addAnother === true) { enterManually(); return; }
   showApp("overview");
@@ -914,7 +1106,7 @@ function idbRun(mode, fn) {
   }));
 }
 function buildBackup() {
-  return { app: "taxplot", version: 1, savedAt: new Date().toISOString(), onboarding: STATE.onboarding, regime: STATE.regime, income: STATE.income, receipts: STATE.receipts, familyMembers: STATE.familyMembers, hraClaimed: STATE.hraClaimed, form130: STATE.form130 };
+  return { app: "taxplot", version: 1, savedAt: new Date().toISOString(), onboarding: STATE.onboarding, regime: STATE.regime, income: STATE.income, receipts: STATE.receipts, familyMembers: STATE.familyMembers, hraClaimed: STATE.hraClaimed, form130: STATE.form130, vendorMemory: STATE.vendorMemory, recurring: STATE.recurring };
 }
 function applyBackup(b) {
   if (!b || b.app !== "taxplot" || !Array.isArray(b.receipts)) return false;
@@ -925,6 +1117,8 @@ function applyBackup(b) {
   STATE.familyMembers = Array.isArray(b.familyMembers) ? b.familyMembers : [];
   STATE.hraClaimed = b.hraClaimed == null ? "" : b.hraClaimed;
   STATE.form130 = Object.assign({ gross: "", s123: "", s126: "", tds: "" }, b.form130 || {});
+  STATE.recurring = Array.isArray(b.recurring) ? b.recurring : [];
+  STATE.vendorMemory = b.vendorMemory && typeof b.vendorMemory === "object" && !Array.isArray(b.vendorMemory) ? b.vendorMemory : {};
   return true;
 }
 let persistTimer = null, persistWarned = false;
@@ -976,8 +1170,21 @@ function importBackupFile(file) {
   rd.readAsText(file);
 }
 
+// Issue #15: re-rendering the view drops keyboard focus to <body>. Remember which
+// data-act control had it and put focus back (or on its section heading if the
+// control is gone or now disabled, e.g. after Forget / Log).
+const FOCUS_FALLBACK = { "log-recurring": "#recurring-card h3", "remove-recurring": "#recurring-card h3", "add-recurring": "#recurring-card h3", "forget-vendor": "#s-vendors h2", "forget-all-vendors": "#s-vendors h2" };
+function focusSelectorFor(node) {
+  if (!node || !node.dataset || !node.dataset.act) return null;
+  const q = (v) => String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `[data-act="${q(node.dataset.act)}"]` + (node.dataset.id ? `[data-id="${q(node.dataset.id)}"]` : "");
+}
 function renderApp() {
   persistState();
+  const viewEl = el("view");
+  const ae = document.activeElement;
+  const focusSel = viewEl && ae && viewEl.contains(ae) ? focusSelectorFor(ae) : null;
+  const focusAct = focusSel && ae.dataset.act;
   document.querySelectorAll(".nav-btn").forEach((b) => {
     const [i, label] = NAV[b.dataset.view];
     b.innerHTML = ic(i) + label();
@@ -990,6 +1197,11 @@ function renderApp() {
   // Big thumb-reach Snap button on phones (task 6) -- the header's Snap
   // button collapses to an icon-only control on narrow screens; this FAB
   // (hidden above the mobile breakpoint, see style.css) is the "real" one.
+  if (focusSel) {
+    let node = el("view").querySelector(focusSel);
+    if (!node || node.disabled) node = FOCUS_FALLBACK[focusAct] ? el("view").querySelector(FOCUS_FALLBACK[focusAct]) : null;
+    if (node) node.focus();
+  }
   const fab = el("snap-fab");
   if (fab) { fab.innerHTML = ic("camera"); fab.setAttribute("aria-label", t("common.snapReceipt")); fab.title = t("common.snapReceipt"); }
 }
@@ -1189,6 +1401,69 @@ function freelanceCard() {
    ${rows}<p><b>${t("freelance.total")}</b> ${inr(total)}</p>${est}
    <p class="meta">${t("freelance.reminder", { date: dateTxt })}</p></div>`;
 }
+// ---------- Monthly payments quick-log ----------
+// In-app reminders only (same spirit as the monthly receipt nudge setting):
+// nothing is sent, nothing is paid. One tap adds a normal receipt for the month.
+const RECURRING_CATEGORIES = ["Rent (for HRA)", "Life Insurance Premium", "Health Insurance — Self/Family", "Health Insurance — Parents", "ELSS / Mutual Fund", "PPF", "NPS Tier I Contribution", "Not tax-related / Skip this receipt"];
+const RECURRING_LEAD_DAYS = 3; // "due soon" shows this many days before the due day
+function monthKey(date) { return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0"); }
+function daysInMonth(date) { return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate(); }
+// "logged" | "overdue" (due day passed, not logged) | "due" (within the lead window) | "upcoming"
+function recurringStatus(item, date = new Date()) {
+  if (item.lastMonth === monthKey(date)) return "logged";
+  const due = Math.min(Number(item.day) || 1, daysInMonth(date));
+  const today = date.getDate();
+  if (today > due) return "overdue";
+  return due - today <= RECURRING_LEAD_DAYS ? "due" : "upcoming";
+}
+function addRecurring({ vendor, category, amount, day, landlordPan }) {
+  const a = Math.round(Number(amount)), dd = Math.round(Number(day));
+  if (!String(vendor || "").trim() || !(a > 0) || !(dd >= 1 && dd <= 31) || !TaxEngine.CATEGORY_MAP[category]) return false;
+  STATE.recurring.push({ id: "rc" + Date.now() + STATE.recurring.length, vendor: String(vendor).trim(), category, amount: a, day: dd, landlordPan: String(landlordPan || "").trim(), lastMonth: "" });
+  return true;
+}
+function logRecurring(id, date = new Date()) {
+  const item = STATE.recurring.find((x) => x.id === id);
+  if (!item || item.lastMonth === monthKey(date)) return false;
+  const draft = { vendor: item.vendor, date: date.toISOString().slice(0, 10), amount: item.amount, category: item.category, paymentMode: "", landlordPan: item.landlordPan };
+  const ruleWarnings = TaxEngine.checkReceiptRules(draft, STATE.receipts);
+  STATE.receipts.push({
+    id: "r" + Date.now() + "-" + id, vendor: item.vendor, date: draft.date, amount: item.amount, category: item.category,
+    notes: "", photo: null, lowConfidence: [], source: "recurring",
+    landlordPan: item.landlordPan, landlordRelationship: "", familyMember: "", paymentMode: "", ruleWarnings,
+  });
+  item.lastMonth = monthKey(date);
+  return true;
+}
+function recurringCard() {
+  const now = new Date();
+  const monthName = now.toLocaleString("en-IN", { month: "long" });
+  const remind = SETTINGS.remindMonthly;
+  const rows = STATE.recurring.map((it) => {
+    const st = recurringStatus(it, now);
+    const chipHTML = st === "logged" ? chip("done", t("recurring.statusLogged"))
+      : !remind ? "" : st === "overdue" ? chip("soon", t("recurring.statusOverdue")) : st === "due" ? chip("room", t("recurring.statusDue")) : chip("none", t("recurring.statusUpcoming"));
+    const rent = it.category === "Rent (for HRA)" ? rentNotesHTML(it.amount, it.landlordPan) : null;
+    const rentNotes = rent ? (it.landlordPan ? "" : rent.pan) + rent.tds : "";
+    return `<div class="rec-row" data-rec="${escAttr(it.id)}"><div style="min-width:0;flex:1 1 12rem"><b>${esc(it.vendor)}</b> · ${inr(it.amount)}
+      <div class="meta">${esc(it.category)} · ${t("recurring.dueOn", { day: it.day })}</div>${rentNotes}</div>
+      <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">${chipHTML}
+      <button type="button" class="btn" data-act="log-recurring" data-id="${escAttr(it.id)}" ${st === "logged" ? "disabled" : ""}>${st === "logged" ? t("recurring.logged", { month: monthName }) : t("recurring.log", { month: monthName })}</button>
+      <button type="button" class="btn ghost" data-act="remove-recurring" data-id="${escAttr(it.id)}">${t("recurring.remove")}</button></div></div>`;
+  }).join("");
+  return `<div class="card" id="recurring-card"><h3 tabindex="-1">${t("recurring.title")}</h3><p class="meta">${t("recurring.sub")}</p>
+    ${rows || `<p class="meta">${t("recurring.none")}</p>`}
+    <details><summary>${t("recurring.addSummary")}</summary>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
+        <select class="sel" id="rec-category" aria-label="${t("recurring.kindLabel")}">${RECURRING_CATEGORIES.map((c) => `<option value="${escAttr(c)}">${esc(c)}</option>`).join("")}</select>
+        <input class="text-input" id="rec-vendor" placeholder="${t("recurring.vendorPh")}" aria-label="${t("recurring.vendorPh")}">
+        <input class="text-input" id="rec-amount" type="number" min="0" inputmode="numeric" placeholder="${t("recurring.amountPh")}" aria-label="${t("recurring.amountPh")}">
+        <input class="text-input" id="rec-day" type="number" min="1" max="31" inputmode="numeric" placeholder="${t("recurring.dayPh")}" aria-label="${t("recurring.dayPh")}">
+        <input class="text-input" id="rec-pan" placeholder="${t("recurring.panPh")}" aria-label="${t("recurring.panPh")}">
+        <button type="button" class="btn" data-act="add-recurring">${t("recurring.add")}</button>
+      </div></details>
+    <p class="meta">${t("recurring.note")}</p></div>`;
+}
 // Item 3: in-app only nudge (no push). Which employer window, if any, is `date` in?
 function employerNudgeKey(date = new Date()) {
   const m = date.getMonth() + 1;
@@ -1257,6 +1532,7 @@ function renderOverviewView() {
   </div>
   ${detectBanner}
   ${employerNudgeCard()}
+  ${recurringCard()}
   ${nothingToDoCard()}
   ${freelanceCard()}
   ${regimeCard}
@@ -1295,7 +1571,7 @@ function renderReceiptsView() {
   const rows = list.map((r) => {
     const mapped = TaxEngine.CATEGORY_MAP[r.category];
     const flagged = isReceiptFlagged(r);
-    return `<tr><td class="num">${fmtD(r.date)}</td><td><b style="font-weight:600">${r.vendor}</b>${r.familyMember ? `<div class="meta">${escAttr(r.familyMember)}</div>` : ""}</td><td>${r.category}</td><td>${mapped && mapped.group === "hra" ? t("receipts.hraExemptionLabel") : mapped && mapped.label ? mapped.label : t("common.notCounted")}</td><td class="r num">${inr(r.amount)}</td><td>${flagged ? chip("check", t("receipts.doubleCheckChip")) : chip("done", t("receipts.savedChip"))}</td></tr>`;
+    return `<tr><td class="num">${fmtD(r.date)}</td><td><b style="font-weight:600">${r.vendor}</b>${r.familyMember ? `<div class="meta">${escAttr(r.familyMember)}</div>` : ""}</td><td>${r.category}</td><td>${mapped && mapped.group === "hra" ? t("receipts.hraExemptionLabel") : mapped && mapped.label ? mapped.label : t("common.notCounted")}</td><td class="r num">${inr(r.amount)}<div class="meta">${savingTableText(r)}</div></td><td>${flagged ? chip("check", t("receipts.doubleCheckChip")) : chip("done", t("receipts.savedChip"))}</td></tr>`;
   }).join("");
 
   return headBar(t("receipts.headerTitle")) + detectBanner + `
@@ -1609,6 +1885,7 @@ function renderSettingsView() {
     ${row(t("settings.autoDetectLabel"), t("settings.autoDetectHelp"), sw("autoDetectEnabled", t("settings.autoDetectLabel"), () => STATE.autoDetectEnabled, false))}
    </section>
    ${familyMembersSection()}
+   ${vendorMemorySection()}
    <section class="group" id="s-reminders"><header><h2>${t("settings.remindersHeader")}</h2></header>
     ${row(t("settings.monthlyNudgeLabel"), t("settings.monthlyNudgeHelp"), sw("remindMonthly", t("settings.monthlyNudgeAria"), () => SETTINGS.remindMonthly, true))}
     ${row(t("settings.deadlineAlertsLabel"), t("settings.deadlineAlertsHelp"), `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">${sw("remindDeadline", t("settings.deadlineAlertsAria"), () => SETTINGS.remindDeadline, true)}<select class="sel" id="set-deadlineDays" aria-label="${t("settings.deadlineDaysAria")}">${[30, 45, 60, 90].map((d) => `<option value="${d}"${SETTINGS.deadlineDays === d ? " selected" : ""}>${t("settings.daysBeforeOption", { d })}</option>`).join("")}</select></div>`)}
@@ -1673,18 +1950,21 @@ document.addEventListener("click", (e) => {
     case "open-camera": openCameraInput(); break;
     case "open-gallery": openGalleryInput(); break;
     case "retake-photo": retakePhoto(); break;
-    case "use-photo": usePhoto(); break;
+    case "add-page": addAnotherPage(); break;
+    case "use-photo": useCapturedPhotos(); break;
     case "enter-manually": enterManually(); break;
     case "save-receipt": saveReceipt(); break;
     case "save-another": saveReceipt(true); break;
     case "quick-cat": STATE.reviewDraft.category = target.dataset.value; renderReview(); break;
     case "same-as-last": Object.assign(STATE.reviewDraft, STATE.lastEntry); renderReview(); break;
+    case "use-remembered": { const m = vendorMemoryFor(STATE.reviewDraft.vendor); if (m) { STATE.reviewDraft.category = m.category; renderReview(); const c = document.querySelector('#s-review select[data-field="category"]'); if (c) c.focus(); } break; }
     case "discard-receipt": discardReceipt(); break;
     default: break;
   }
 });
 
 document.addEventListener("change", (e) => {
+  if (e.target.dataset && e.target.dataset.memfield && STATE.reviewDraft) { STATE.reviewDraft[e.target.dataset.memfield] = e.target.checked; return; }
   if (e.target.dataset && e.target.dataset.action === "file-selected") { onFileSelected(e.target); return; }
   const field = e.target.dataset && e.target.dataset.field;
   if (field) { updateDraftField(field, e.target.value); return; }
@@ -1695,6 +1975,8 @@ document.addEventListener("input", (e) => {
   // Refresh just the rent-helper sub-section (not the whole review form, so
   // the amount input never loses focus) as the TDS-threshold check depends
   // on the amount the user is still typing.
+  if (field === "vendor") refreshVendorMemory();
+  if (field === "amount" && STATE.reviewDraft && el("saving-est")) el("saving-est").innerHTML = savingNoteHTML(STATE.reviewDraft);
   if (field === "amount" && STATE.reviewDraft && STATE.reviewDraft.category === "Rent (for HRA)") {
     const rentFields = el("rent-helper-fields");
     if (rentFields) rentFields.innerHTML = rentHelperFields(STATE.reviewDraft);
@@ -1714,7 +1996,7 @@ function resetDemo() {
     screen: "s-onboarding", appView: "overview", onboarding: freshOnboarding(), regime: null, income: null, incomeLog: [], hraClaimed: "", form130: { gross: "", s123: "", s126: "", tds: "" },
     autoDetectEnabled: false, receipts: [], pendingDetected: [], receiptFilter: "all", reviewDraft: null,
     reviewDraftSource: null, camera: { phase: "idle", photo: null }, confirmDelete: false, confirmRegimeOptOut: false,
-    glossaryOpen: null, glossaryQuery: "", familyMembers: [], toast: null, dpdpNoticeOpen: false,
+    glossaryOpen: null, glossaryQuery: "", familyMembers: [], recurring: [], vendorMemory: {}, toast: null, dpdpNoticeOpen: false,
   };
   show("s-onboarding");
   showToast(t("settings.toastDemoReset"));
@@ -1758,6 +2040,14 @@ document.addEventListener("click", (e) => {
     addFamilyMember(nameInput.value, el("set-family-relation").value);
     renderApp();
   }
+  if (act === "add-recurring") {
+    const ok = addRecurring({ vendor: el("rec-vendor").value, category: el("rec-category").value, amount: el("rec-amount").value, day: el("rec-day").value, landlordPan: el("rec-pan").value });
+    if (ok) { renderApp(); showToast(t("recurring.toastAdded")); } else showToast(t("recurring.toastNeed"));
+  }
+  if (act === "log-recurring") { if (logRecurring(a.dataset.id)) { renderApp(); showToast(t("recurring.toastLogged")); } }
+  if (act === "remove-recurring") { STATE.recurring = STATE.recurring.filter((x) => x.id !== a.dataset.id); renderApp(); }
+  if (act === "forget-vendor") { forgetVendor(a.dataset.id); renderApp(); showToast(t("vendorMem.forgot")); }
+  if (act === "forget-all-vendors") { STATE.vendorMemory = {}; renderApp(); showToast(t("vendorMem.forgot")); }
   if (act === "remove-family-member") { removeFamilyMember(a.dataset.id); renderApp(); }
   if (act === "reset-settings") resetSettings();
   if (act === "reset-demo") resetDemo();

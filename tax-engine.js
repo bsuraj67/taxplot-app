@@ -164,6 +164,8 @@ const TAX_CONFIG = {
   // Months (1-12) when employers usually ask for tax declarations / proofs. Employer-specific; shown as "often", never as a deadline.
   employerCalendar: { declaration: { startMonth: 4, endMonth: 4 }, proofs: { startMonth: 12, endMonth: 2 } }, // [VERIFY] Form 124 timing; sources conflict (Dec-Jan vs Jan-Feb), window kept wide
   defaultIncomeFallback: 950000, // [VERIFY] used when no income band or exact income is set yet
+  // Per-receipt "estimated saving" is shown rounded to this many rupees, so it never looks more exact than it is.
+  receiptSavingRoundRupees: 10, // [VERIFY] display rounding only, not a tax figure
 };
 
 // ---------- Category → Section mapping (drives the Review screen "Applies to" chip) ----------
@@ -441,6 +443,38 @@ function compareRegimes({ grossIncome, receipts, hraContext = {}, section126Opti
   };
 }
 
+/**
+ * Estimated tax saving from ONE receipt, under the user's regime (informational).
+ * Method: tax with all of the user's receipts minus tax without this one, so the
+ * user's slab, section caps (a section already full saves nothing more), HRA and
+ * rebate are all respected. Under the New Regime deductions of this kind do not
+ * apply, so the saving is honestly 0 and `ifOld` tells what the Old Regime would give.
+ * Returns { saving, ifOld, regime, reason } where reason is null or one of:
+ * "newRegime" | "notCounted" | "notModelled" | "capReached" | "cash" | "noSaving".
+ * `receipts` is the user's other saved receipts (this one is added; if it is
+ * already in the list, it is ignored there by id).
+ */
+function estimateReceiptSaving({ receipt, receipts = [], regime = "new", grossIncome, hraContext = {}, section126Options = {}, ageBand = "under60" } = {}) {
+  const round = (n) => { const step = TAX_CONFIG.receiptSavingRoundRupees || 1; return Math.max(0, Math.round(n / step) * step); };
+  const out = (o) => Object.assign({ saving: 0, ifOld: 0, regime: regime === "new" || !regime ? "new" : "old", reason: null }, o);
+  const mapped = receipt && CATEGORY_MAP[receipt.category];
+  if (!mapped || mapped.group === "skip") return out({ reason: "notCounted" });
+  if (!(Number(receipt.amount) > 0)) return out({ reason: "noSaving" });
+  if (["s133", "edu", "s127"].includes(mapped.group)) return out({ reason: "notModelled" });
+  if ((mapped.group === "s126self" || mapped.group === "s126parents") && isSection126CashDisallowed(receipt)) return out({ reason: "cash" });
+  const others = receipts.filter((r) => !(receipt.id && r.id === receipt.id));
+  // HRA: the annual rent is the sum of rent receipts (same rule the dashboard uses).
+  const rentOf = (list) => list.filter((r) => r.category === "Rent (for HRA)").reduce((s, r) => s + Number(r.amount || 0), 0);
+  const run = (list) => compareRegimes({ grossIncome, receipts: list, hraContext: Object.assign({}, hraContext, { rentPaidAnnual: rentOf(list) }), section126Options, ageBand });
+  const withR = run(others.concat([receipt])), without = run(others);
+  const ifOld = round(without.oldTax - withR.oldTax);
+  if (regime === "new" || !regime) return out({ ifOld, reason: "newRegime" });
+  const saving = round(without.oldTax - withR.oldTax);
+  if (saving > 0) return out({ saving, ifOld: saving });
+  const capFull = (withR.deductionsUsed[mapped.group] || 0) === (without.deductionsUsed[mapped.group] || 0) && mapped.group !== "hra";
+  return out({ reason: capFull ? "capReached" : "noSaving" });
+}
+
 const TaxEngineExports = {
   TAX_CONFIG,
   // Flat aliases kept for callers that reference individual figures directly.
@@ -476,6 +510,7 @@ const TaxEngineExports = {
   form130CrossCheck,
   summarizeDeductions,
   compareRegimes,
+  estimateReceiptSaving,
 };
 
 if (typeof module !== "undefined") {

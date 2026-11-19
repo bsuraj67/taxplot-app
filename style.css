@@ -560,8 +560,19 @@ textarea{width:100%; min-height:4.5rem; background:var(--surf2); border:1px soli
 @media print{
   body *{visibility:hidden;}
   #s-app, #s-app *{visibility:visible;}
-  .side, .tabbar{display:none !important;}
+  .side, .tabbar, .snap-fab, .toast, .sheet-overlay{display:none !important;}
   #view > *:not(#view-report){display:none !important;}
+  /* Issue #18: full-width, un-clipped report on paper */
+  html, body{height:auto !important; overflow:visible !important;}
+  #s-app, .shell{display:block !important; width:100% !important; max-width:none !important; height:auto !important; min-height:0 !important; overflow:visible !important;}
+  .main{display:block !important; width:100% !important; max-width:none !important; padding:0 !important; overflow:visible !important;}
+  #view-report{width:100% !important; max-width:none !important; overflow:visible !important;}
+  #view-report *{max-width:none; min-width:0; overflow:visible !important;}
+  #view-report button, #view-report [data-act]:not(a), #view-report .btn, #view-report .head [data-act="goto-camera"]{display:none !important;}
+  #view-report table{width:100% !important; table-layout:auto;}
+  #view-report td, #view-report th, #view-report .money{white-space:normal; overflow-wrap:anywhere; filter:none !important;}
+  #view-report .caps, #view-report .row{grid-template-columns:1fr !important;}
+  #view-report > *{break-inside:avoid;}
 }
 
 /* ---------- "Tax words" glossary (task 4b) ---------- */

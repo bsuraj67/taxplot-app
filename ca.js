@@ -553,12 +553,14 @@ function caRvCard(q) {
 // DEMO ONLY: no real link, no sending, no data collection, no referral reward or credit of any kind.
 // The wa.me link only opens a message the CA reads, edits and sends themselves.
 let caInvStep = 1;
+// Issue #19: the template ends the name with its own full stop, so drop a trailing one here.
+const INVITE_FIRM = "Ritu M.".replace(/\.+$/, "");
 function caInviteView() {
   const steps = [1, 2, 3, 4];
   const chips = steps.map((n) => `<button class="fchip" type="button" data-inv-step="${n}" aria-pressed="${caInvStep === n}">${t("invite.stepChip", { n, name: t("invite.step" + n + ".name") })}</button>`).join("");
-  const wa = "https://wa.me/?text=" + encodeURIComponent(t("invite.message", { firm: "Ritu M." }));
+  const wa = "https://wa.me/?text=" + encodeURIComponent(t("invite.message", { firm: INVITE_FIRM }));
   const cur = t("invite.step" + caInvStep + ".body");
-  const draft = `<section class="cardx"><header><h2>${t("invite.draftTitle")}</h2><p>${t("invite.draftSub")}</p></header><div class="note-box" style="margin:.2rem 1rem">${t("invite.message", { firm: "Ritu M." })}</div><div style="padding:.5rem 1rem"><a class="btn sm" data-invite-wa href="${wa}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("invite.openWa")}</a></div><p class="muted" style="font-size:.78rem;padding:0 1rem .6rem">${t("invite.draftNote")}</p></section>`;
+  const draft = `<section class="cardx"><header><h2>${t("invite.draftTitle")}</h2><p>${t("invite.draftSub")}</p></header><div class="note-box" style="margin:.2rem 1rem">${t("invite.message", { firm: INVITE_FIRM })}</div><div style="padding:.5rem 1rem"><a class="btn sm" data-invite-wa href="${wa}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("invite.openWa")}</a></div><p class="muted" style="font-size:.78rem;padding:0 1rem .6rem">${t("invite.draftNote")}</p></section>`;
   const land = `<section class="cardx"><header><h2>${t("invite.landTitle")}</h2><p>${t("invite.landSub")}</p></header><div class="note-box" style="margin:.2rem 1rem"><b>${t("invite.landHead")}</b><p>${t("invite.landBody", { pan: caMaskPan4("ABCDE1234K") })}</p><p class="muted">${t("invite.landPrice")}</p><button class="btn ghost sm" type="button" data-toast="${t("invite.landToast")}">${t("invite.landButton")}</button></div></section>`;
   return `<div class="ph"><h1>${t("invite.title")}</h1><span class="pill">${t("invite.demoPill")}</span></div><p class="muted" style="font-size:.86rem">${t("invite.sub")}</p><div class="note-box">${ic("info")}<span>${t("invite.demoNote")}</span></div><section class="cardx"><header><h2>${t("invite.flowTitle")}</h2></header><div class="fbar">${chips}</div><p style="padding:.2rem 1rem .6rem">${cur}</p></section>${draft}${land}<div class="note-box">${ic("info")}<span>${t("invite.rules")}</span></div>${CA_DISC}`;
 }

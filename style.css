@@ -617,3 +617,13 @@ textarea{width:100%; min-height:4.5rem; background:var(--surf2); border:1px soli
   body.print-status *{visibility:visible !important;}
   body.print-status .work, body.print-status .content, body.print-status .pane { display: block !important; overflow: visible !important; }
 }
+/* CA annual plan tracker: same print approach as the client status view, scoped to body.print-plan */
+.print-only-title{display:none;}
+@media print {
+  body.print-plan .top, body.print-plan .rail, body.print-plan .statusbar, body.print-plan .toast,
+  body.print-plan .cs-noprint, body.print-plan .disc, body.print-plan .cards { display: none !important; }
+  body.print-plan .print-only-title{display:block !important;}
+  body.print-plan *{visibility:visible !important;}
+  body.print-plan .work, body.print-plan .content, body.print-plan .pane { display: block !important; overflow: visible !important; }
+  body.print-plan .grid{display:block !important; max-height:none !important; overflow:visible !important;}
+}

@@ -335,7 +335,7 @@
       "postFilingTitle": "After you file",
       "postFilingEVerified": "Return e-verified",
       "postFilingRefund": "Refund received",
-      "postFilingRevisedDeadline": "Revised return due by {{date}}, if you need to correct anything.",
+      "postFilingRevisedDeadline": "Revised return due by {{date}} (date on record, confirm it on the official portal), if you need to correct anything.",
       "shareCA": "Share with my CA · soon",
       "missedHealthSelf": "No health insurance premium logged for yourself or family — if you paid one, add it before we finalize this report.",
       "missedHealthParents": "No health insurance premium logged for parents — if you pay one, it has its own Section 126 (80D) cap on top of your own.",
@@ -556,7 +556,8 @@
       "notices": "Notice register",
       "status": "Client status",
       "yreview": "Year in review",
-      "invite": "Invite clients"
+      "invite": "Invite clients",
+      "plan": "Annual plan"
     },
     "clients": {
       "title": "Clients",
@@ -1204,6 +1205,33 @@
         "name": "Pack arrives",
         "body": "Only shared receipts would appear in your review queue. You review them; nothing is filed by TaxPlot."
       }
+    },
+    "plan": {
+      "title": "Annual plan tracker",
+      "sub": "The year's milestones for one client. Tick a row when you have marked it done yourself. TaxPlot makes no payment, files nothing and ticks nothing on its own. The rows are a general list: you decide which ones apply to this client.",
+      "sample": "Sample data",
+      "note": "CA-entered record. Dates are as on record in TaxPlot's settings and must be confirmed on the official portal. Not tax advice.",
+      "clientLabel": "Client",
+      "colDone": "Done",
+      "colMilestone": "Milestone",
+      "colDate": "Date on record",
+      "colMarked": "CA entry",
+      "dateOnRecord": "Date on record, confirm on the official portal.",
+      "datePassed": "Date passed",
+      "tickAria": "Mark done by CA: {{what}}",
+      "markedOn": "Marked done by CA on {{date}}",
+      "notMarked": "Not marked",
+      "kpi": "{{done}} of {{total}} marked done by CA",
+      "investWho": "Section 123 (80C) tax-saving investments, Section 124 (80CCD(1B)) extra pension contribution, Section 126 (80D) health insurance",
+      "itrNote": "Likely return type, your CA confirms the right form.",
+      "tbcHeader": "To be confirmed by your CA (no date shown)",
+      "tbcRevised": "Revised-return date for this year.",
+      "tbcRent": "Rent TDS by the tenant, Section {{secNew}} ({{secOld}}): deposit and form date ({{formNew}}, old {{formOld}}). The rule is in TaxPlot's settings; the date is not.",
+      "tbcOther": "Notice response dates are typed by you in the Notices register.",
+      "printBtn": "Print or save as PDF",
+      "printTitle": "Annual plan tracker for {{name}}, {{fy}}",
+      "printPan": "PAN {{pan}}",
+      "footer": "Informational estimate — not tax advice."
     }
   }
 }

@@ -230,7 +230,7 @@ function mm(u, cap) { const st = u >= cap ? "done" : u === 0 ? "none" : "room"; 
 const CA_DISC = `<p class="disc">${ic("info")}${t("common.disclaimer")}</p>`;
 
 // ---------- state ----------
-const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["import", "up", t("nav.import")], ["invite", "users", t("nav.invite")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["notices", "note", t("nav.notices")], ["status", "eye", t("nav.status")], ["rules", "msg", t("nav.rules")], ["season", "report", t("nav.season")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
+const CA_NAV = [[t("nav.groupPractice"), [["dash", "home", t("nav.dashboard")], ["clients", "users", t("nav.clients")], ["import", "up", t("nav.import")], ["invite", "users", t("nav.invite")], ["queue", "inbox", t("nav.queue")]]], [t("nav.groupWork"), [["deadlines", "cal", t("nav.deadlines")], ["notices", "note", t("nav.notices")], ["status", "eye", t("nav.status")], ["plan", "check", t("nav.plan")], ["rules", "msg", t("nav.rules")], ["season", "report", t("nav.season")], ["reports", "report", t("nav.reports")]]], [t("nav.groupFirm"), [["settings", "gear", t("nav.settings")]]]];
 var AUDIT = [];
 var caReason = "";
 const CA_USER = "Ritu M.";
@@ -591,6 +591,7 @@ const CA_VIEWS = {
   rules() { return { main: caRulesView(), detail: false }; },
   season() { return { main: caSeasonView(), detail: false }; },
   status() { return { main: caStatusView(), detail: false }; },
+  plan() { return { main: caPlanView(), detail: false }; },
   invite() { return { main: caInviteView(), detail: false }; },
   reports() { return { main: `<div class="ph"><h1>${t("reports.title")}</h1></div><section class="cardx"><header><h2>${t("reports.exportsHeader")}</h2><p>${t("reports.exportsSub")}</p></header>
     ${(CA_LOCALE.ca.reports.items || []).map(({ title, help }) => `<div class="row"><div><span class="lbl">${title}</span><p class="help">${help}</p></div><button class="btn ghost" type="button" data-toast="${t("reports.exportToast")}">${ic("down")}${t("reports.exportBtn")}</button></div>`).join("")}</section>
@@ -895,6 +896,53 @@ async function caExportYearReview(id) {
 }
 function caStatPrint() { document.body.classList.add("print-status"); const done = () => document.body.classList.remove("print-status"); window.addEventListener("afterprint", done, { once: true }); try { window.print(); } catch (e) { done(); } }
 
+// ---------- Annual plan tracker (CA workspace) ----------
+// Milestones come from TaxEngine.DEADLINES rows flagged `plan: true` (dates live only in tax-engine.js,
+// each // VERIFY). A tick means "marked done by the CA" on a date the CA entered by clicking: never filed,
+// paid or accepted. No penalty/interest text. Rows Comply listed as UNCONFIRMED are not built.
+const CA_PLAN_CONFIG = { storeKey: "taxplot.ca.annualPlan" };
+var caPlan = {}, caPlanClient = 0; // caPlan: { [clientId]: { [rowKey]: "YYYY-MM-DD" } }; var for tests
+function caPlanLoad() {
+  try {
+    const o = JSON.parse(localStorage.getItem(CA_PLAN_CONFIG.storeKey) || "{}");
+    if (o && typeof o === "object") Object.keys(o).forEach((id) => { const m = o[id]; if (m && typeof m === "object") { caPlan[id] = {}; Object.keys(m).forEach((k) => { if (/^\d{4}-\d{2}-\d{2}$/.test(m[k])) caPlan[id][k] = m[k]; }); } });
+  } catch (e) {}
+}
+function caPlanSave() { try { localStorage.setItem(CA_PLAN_CONFIG.storeKey, JSON.stringify(caPlan)); } catch (e) {} }
+function caPlanRows(c) {
+  return TaxEngine.DEADLINES.filter((d) => d.plan && (!d.appliesTo || (d.appliesTo === "salaried") === (c.type === "Salaried")));
+}
+function caPlanToggle(id, key) {
+  const m = caPlan[id] || (caPlan[id] = {});
+  if (m[key]) delete m[key]; else m[key] = new Date().toISOString().slice(0, 10);
+  caPlanSave();
+}
+function caPlanFmt(iso) { return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); }
+function caPlanWho(d) { return d.key === "invest" ? t("plan.investWho") : /^itr/.test(d.key) ? t("plan.itrNote") : d.who; }
+function caPlanView() {
+  const c = C.find((x) => x.id === caPlanClient) || C[0];
+  if (!c) return `<div class="ph"><h1>${t("plan.title")}</h1></div>`;
+  const rows = caPlanRows(c), mine = caPlan[c.id] || {}, done = rows.filter((d) => mine[d.key]).length, rc = TaxEngine.TAX_CONFIG.rentTDS;
+  const body = rows.map((d) => {
+    const on = !!mine[d.key], passed = caDays(d) < 0;
+    const tick = `<input type="checkbox" class="chk" data-plan-tick="${c.id}:${d.key}"${on ? " checked" : ""} aria-label="${caEsc(t("plan.tickAria", { what: d.label }))}">`;
+    const dt = `<span class="num">${caPlanFmt(d.date)}</span>${passed ? ` <span class="pill">${t("plan.datePassed")}</span>` : ""}`;
+    return { tick, d, dt, who: caPlanWho(d), mark: on ? t("plan.markedOn", { date: caPlanFmt(mine[d.key]) }) : t("plan.notMarked") };
+  });
+  const opts = C.map((x) => `<option value="${x.id}"${x.id === c.id ? " selected" : ""}>${caEsc(x.name)}</option>`).join("");
+  return `<section class="cs-print" data-plan-view="${c.id}"><div class="ph"><h1>${t("plan.title")}</h1><span class="pill">${t("plan.sample")}</span></div>
+  <p class="muted cs-noprint" style="font-size:.86rem">${t("plan.sub")}</p>
+  <h2 class="print-only-title" style="font-size:1rem;margin:.2rem 0">${t("plan.printTitle", { name: caEsc(c.name), fy: TaxEngine.FY_LABEL })} · ${t("plan.printPan", { pan: caMaskPan4(c.pan) })}</h2>
+  <div class="cs-noprint" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.5rem 0"><label for="plan-client" class="muted">${t("plan.clientLabel")}</label><select class="sel" id="plan-client" data-plan-client="1">${opts}</select><button class="btn" type="button" data-plan-print="${c.id}">${ic("down")}${t("plan.printBtn")}</button></div>
+  <p class="muted" style="font-size:.86rem"><b>${t("plan.kpi", { done, total: rows.length })}</b></p>
+  <div class="grid" style="max-height:none"><table><thead><tr><th>${t("plan.colDone")}</th><th>${t("plan.colMilestone")}</th><th>${t("plan.colDate")}</th><th>${t("plan.colMarked")}</th></tr></thead><tbody>${body.map((r) => `<tr data-plan-row="${r.d.key}"><td>${r.tick}</td><td><b>${r.d.label}</b><div class="muted" style="font-size:.8rem">${r.who}</div></td><td>${r.dt}</td><td>${r.mark}</td></tr>`).join("")}</tbody></table></div>
+  <div class="cards" role="list" aria-label="${t("plan.title")}">${body.map((r) => `<article class="ccard" role="listitem"><div class="h"><b>${r.d.label}</b>${r.tick}</div><span class="muted sub">${r.who}</span><span class="num">${r.dt}</span><span class="muted sub">${r.mark}</span></article>`).join("")}</div>
+  <p class="muted" style="font-size:.8rem">${t("plan.dateOnRecord")}</p>
+  <h3 style="font-size:.95rem">${t("plan.tbcHeader")}</h3><ul class="muted" style="font-size:.84rem"><li>${t("plan.tbcRevised")}</li><li>${t("plan.tbcRent", { secNew: rc.sectionNew, secOld: rc.sectionOld, formNew: rc.formNew, formOld: rc.formOld })}</li><li>${t("plan.tbcOther")}</li></ul>
+  <p class="muted" style="font-size:.8rem">${t("plan.note")}</p><p class="muted" style="font-size:.8rem">${t("plan.footer")}</p></section>`;
+}
+function caPlanPrint() { document.body.classList.add("print-plan"); const done = () => document.body.classList.remove("print-plan"); window.addEventListener("afterprint", done, { once: true }); try { window.print(); } catch (e) { done(); } }
+
 // ---------- render ----------
 function caRender() {
   // Keep keyboard focus on the control that was just pressed (issue #11): the view is rebuilt
@@ -902,7 +950,7 @@ function caRender() {
   let focusSel = "", focusIdx = -1;
   const ae = document.activeElement;
   if (ae && ae.dataset) {
-    for (const k of ["invStep", "qall", "room", "bulk", "rulewin", "season", "imp", "ntcAdd", "ntcDel", "ntcStatus", "evnotice", "stStage", "stNote", "stView", "stPrint", "yreview", "filt", "sort", "go", "set", "toggle"]) {
+    for (const k of ["invStep", "qall", "room", "bulk", "rulewin", "season", "imp", "ntcAdd", "ntcDel", "ntcStatus", "evnotice", "stStage", "stNote", "stView", "stPrint", "planTick", "planClient", "planPrint", "yreview", "filt", "sort", "go", "set", "toggle"]) {
       if (ae.dataset[k] !== undefined) { focusSel = `[data-${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}="${ae.dataset[k]}"]` + (k === "set" ? `[data-val="${ae.dataset.val}"]` : ""); focusIdx = [...document.querySelectorAll(focusSel)].indexOf(ae); break; }
     }
   }
@@ -941,6 +989,8 @@ document.addEventListener("click", (e) => {
   const is = e.target.closest("[data-inv-step]"); if (is) { caInvStep = +is.dataset.invStep; caRender(); return; }
   const sv = e.target.closest("[data-st-view]"); if (sv) { caStatView = +sv.dataset.stView; caRender(); return; }
   if (e.target.closest("[data-st-print]")) { caStatPrint(); return; }
+  if (e.target.closest("[data-plan-print]")) { caPlanPrint(); return; }
+  const pt = e.target.closest("[data-plan-tick]"); if (pt) { const [pid, pk] = pt.dataset.planTick.split(":"); caPlanToggle(+pid, pk); caRender(); return; }
   const yr = e.target.closest("[data-yreview]"); if (yr) { caExportYearReview(+yr.dataset.yreview); return; }
   const rr = e.target.closest("[data-readiness]"); if (rr) { caExportReadinessRecord(+rr.dataset.readiness); return; }
   const ev = e.target.closest("[data-evidence]"); if (ev) { caExportEvidencePack(+ev.dataset.evidence); return; }
@@ -966,6 +1016,7 @@ document.getElementById("theme-quick").addEventListener("click", () => { const o
 document.addEventListener("change", (e) => {
   if (e.target.id === "ca-lowConf") caSet("lowConf", +e.target.value);
   if (e.target.id === "ca-import-file") { caImportFile(e.target.files && e.target.files[0]); return; }
+  const pc = e.target.dataset && e.target.dataset.planClient; if (pc) { caPlanClient = +e.target.value; caRender(); return; }
   const ss = e.target.dataset && e.target.dataset.stStage; if (ss) { if (CA_STATUS_CONFIG.stages.includes(e.target.value)) { caStatSet(+ss, { stage: e.target.value }); caRender(); } return; }
   const sn = e.target.dataset && e.target.dataset.stNote; if (sn) { caStatSet(+sn, { note: e.target.value.slice(0, CA_STATUS_CONFIG.noteMax) }); caRender(); return; }
   const ns = e.target.dataset && e.target.dataset.ntcStatus; if (ns) { const n = caNotices.find((x) => x.id === +ns); if (n && CA_NOTICE_CONFIG.statuses.includes(e.target.value)) { n.status = e.target.value; caNtcSave(); caRender(); } }
@@ -997,6 +1048,6 @@ function caToast(m) {
   clearTimeout(caToastTimer);
   caToastTimer = setTimeout(() => elx.classList.remove("show"), 2000);
 }
-caImportLoad(); caNtcLoad(); caStatLoad(); syncReviewCounts();
+caImportLoad(); caNtcLoad(); caStatLoad(); caPlanLoad(); syncReviewCounts();
 caApplyAppearance();
 caRender();

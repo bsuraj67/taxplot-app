@@ -15,7 +15,7 @@
  *    into the app, which picks it up in app.js's loadSharedReceiptIfAny().
  */
 // Bump CACHE_VERSION on every release: old shell caches are deleted on activate.
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4"; // keep equal to V in index.html and ca.html (scripts are requested as ?v=<version>)
 const SHELL_CACHE = `taxplot-shell-${CACHE_VERSION}`;
 // Name duplicated in app.js's loadSharedReceiptIfAny() -- the two sides of
 // the share hand-off agree on it, there's no API to look it up dynamically.
@@ -26,15 +26,15 @@ const SHARED_RECEIPT_KEY = "/shared-receipt";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./app.js",
+  `./app.js?v=${CACHE_VERSION}`,
   "./ca.html",
-  "./ca.js",
-  "./tax-engine.js",
-  "./style.css",
+  `./ca.js?v=${CACHE_VERSION}`,
+  `./tax-engine.js?v=${CACHE_VERSION}`,
+  `./style.css?v=${CACHE_VERSION}`,
   "./manifest.json",
-  "./locales/i18n.js",
-  "./locales/en.json",
-  "./locales/glossary.en.json",
+  `./locales/i18n.js?v=${CACHE_VERSION}`,
+  `./locales/en.json?v=${CACHE_VERSION}`,
+  `./locales/glossary.en.json?v=${CACHE_VERSION}`,
   "./apple-touch-icon.png",
 ];
 

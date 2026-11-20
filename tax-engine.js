@@ -22,10 +22,10 @@ const TAX_CONFIG = {
   fyLabel: "FY 2026–27", fyStart: "2026-04-01", fyEnd: "2027-03-31", // [VERIFY] AY 2027-28; FY dates are fixed by statute but re-check the label each year
   // `plan: true` rows feed the CA annual plan tracker (Comply-cleared rows only); the revised-return row is left out until a CA confirms its FY 2026–27 date.
   deadlines: [
-    { key: "advTax1", plan: true, date: "2026-06-15", label: "Advance tax · 1st instalment", who: "Clients with business or freelance income" }, // [VERIFY]
-    { key: "advTax2", plan: true, date: "2026-09-15", label: "Advance tax · 2nd instalment", who: "Clients with business or freelance income" }, // [VERIFY]
-    { key: "advTax3", plan: true, date: "2026-12-15", label: "Advance tax · 3rd instalment", who: "Clients with business or freelance income" }, // [VERIFY]
-    { key: "advTaxFinal", plan: true, date: "2027-03-15", label: "Advance tax · 4th instalment", who: "Clients with business or freelance income; presumptive filers (Section 44ADA/44AD) may pay the full year's advance tax in this one instalment" }, // [VERIFY] patronaccounting.com; caclubindia.com
+    { key: "advTax1", plan: true, date: "2026-06-15", label: "Advance tax · 1st instalment", who: "Clients whose estimated tax for the year after TDS is above the advance-tax limit (often clients with business, freelance or large other income); your CA decides who applies." }, // [VERIFY]
+    { key: "advTax2", plan: true, date: "2026-09-15", label: "Advance tax · 2nd instalment", who: "Clients whose estimated tax for the year after TDS is above the advance-tax limit (often clients with business, freelance or large other income); your CA decides who applies." }, // [VERIFY]
+    { key: "advTax3", plan: true, date: "2026-12-15", label: "Advance tax · 3rd instalment", who: "Clients whose estimated tax for the year after TDS is above the advance-tax limit (often clients with business, freelance or large other income); your CA decides who applies." }, // [VERIFY]
+    { key: "advTaxFinal", plan: true, date: "2027-03-15", label: "Advance tax · 4th instalment", who: "Clients whose estimated tax for the year after TDS is above the advance-tax limit (often clients with business, freelance or large other income); your CA decides who applies. Presumptive filers (Section 44ADA/44AD) may pay the full year's advance tax in this one instalment" }, // [VERIFY] patronaccounting.com; caclubindia.com
     { key: "invest", plan: true, date: "2027-03-31", label: "Last day to invest for FY 2026–27", who: "Section 123 (80C), 124 (80CCD(1B)), 126 (80D)" }, // [VERIFY]
     { date: "2027-03-31", label: "Revised return due (date to be confirmed)", who: "Anyone who needs to correct a filed return. Date on record, confirm on the official portal." }, // [VERIFY] Compliance 2026-11-19: may belong to the previous year's return; keep out of the plan tracker
     { key: "itr12", plan: true, appliesTo: "salaried", date: "2027-07-31", label: "ITR due · ITR-1/ITR-2", who: "Salaried with no business/professional income" }, // [VERIFY]
@@ -170,6 +170,12 @@ const TAX_CONFIG = {
 };
 
 // ---------- Category → Section mapping (drives the Review screen "Applies to" chip) ----------
+// Feature flags (not tax figures). autoDetect is OFF on the public build: the
+// current "detection" is simulated sample data (DEMO_DETECTED_SEED), which must
+// never be shown as the user's own payments. Turn on only with a real, consented
+// SMS/UPI reader.
+const FEATURES = { autoDetect: false };
+
 const CATEGORY_MAP = {
   "PPF": { group: "s123", label: "Section 123 (80C) — PPF" },
   "ELSS / Mutual Fund": { group: "s123", label: "Section 123 (80C) — ELSS Investment" },
@@ -185,7 +191,7 @@ const CATEGORY_MAP = {
   // Simplification: a preventive checkup counts inside the self & family
   // sub-limit in practice — not split out separately here. [VERIFY]
   "Preventive Health Checkup": { group: "s126self", label: "Section 126 (80D) — Preventive Checkup" },
-  "Home Loan Interest": { group: "s22", label: "Section 22 (24b) — Home Loan Interest" },
+  "Home Loan Interest": { group: "s22", label: "Section 22 (24(b)) — Home Loan Interest" },
   "Rent (for HRA)": { group: "hra", label: "HRA Exemption — Rent Paid" },
   "Donation": { group: "s133", label: "Section 133 (80G) — Donation" },
   "Education Loan Interest": { group: "edu", label: "Section [VERIFY] (80E) — Education Loan Interest" },
@@ -452,8 +458,9 @@ function compareRegimes({ grossIncome, receipts, hraContext = {}, section126Opti
  * apply, so the saving is honestly 0 and `ifOld` tells what the Old Regime would give.
  * Returns { saving, ifOld, regime, reason } where reason is null or one of:
  * "newRegime" | "notCounted" | "notModelled" | "capReached" | "cash" | "noSaving".
- * `receipts` is the user's other saved receipts (this one is added; if it is
- * already in the list, it is ignored there by id).
+ * `receipts` is the user's saved receipts in the order logged. Only those before this one
+ * count (a draft not in the list counts after all of them), so partial cap room shows a
+ * partial saving and the per-receipt savings sum to the whole-set difference.
  */
 function estimateReceiptSaving({ receipt, receipts = [], regime = "new", grossIncome, hraContext = {}, section126Options = {}, ageBand = "under60" } = {}) {
   const round = (n) => { const step = TAX_CONFIG.receiptSavingRoundRupees || 1; return Math.max(0, Math.round(n / step) * step); };
@@ -463,7 +470,10 @@ function estimateReceiptSaving({ receipt, receipts = [], regime = "new", grossIn
   if (!(Number(receipt.amount) > 0)) return out({ reason: "noSaving" });
   if (["s133", "edu", "s127"].includes(mapped.group)) return out({ reason: "notModelled" });
   if ((mapped.group === "s126self" || mapped.group === "s126parents") && isSection126CashDisallowed(receipt)) return out({ reason: "cash" });
-  const others = receipts.filter((r) => !(receipt.id && r.id === receipt.id));
+  // Chronological: only receipts logged BEFORE this one count (list order). A draft not in the
+  // list comes last. So per-receipt savings add up to the tax difference of the whole set.
+  const at = receipt.id ? receipts.findIndex((r) => r.id === receipt.id) : -1;
+  const others = at >= 0 ? receipts.slice(0, at) : receipts.filter((r) => !(receipt.id && r.id === receipt.id));
   // HRA: the annual rent is the sum of rent receipts (same rule the dashboard uses).
   const rentOf = (list) => list.filter((r) => r.category === "Rent (for HRA)").reduce((s, r) => s + Number(r.amount || 0), 0);
   const run = (list) => compareRegimes({ grossIncome, receipts: list, hraContext: Object.assign({}, hraContext, { rentPaidAnnual: rentOf(list) }), section126Options, ageBand });
@@ -495,6 +505,7 @@ const TaxEngineExports = {
   INCOME_BAND_MIDPOINT: TAX_CONFIG.incomeBandMidpoint,
   DEFAULT_INCOME_FALLBACK: TAX_CONFIG.defaultIncomeFallback,
   CATEGORY_MAP,
+  FEATURES,
   DEMO_DETECTED_SEED,
   DEMO_MOCK_EXTRACTIONS,
   taxFromSlabs,

@@ -452,8 +452,13 @@ function completeOnboarding() {
   STATE.regime = "new";
   STATE.onboarding.completed = true;
   if (!STATE.income) STATE.income = currentIncome();
-  show("s-permission");
+  if (autoDetectOn()) show("s-permission");
+  else enterAppOrSharedReceipt();
 }
+// Auto-detect is a flag (TaxEngine.FEATURES.autoDetect, default OFF): the code is
+// kept for a real implementation, but the public build must not invent payments.
+function autoDetectOn() { return !!(TaxEngine.FEATURES && TaxEngine.FEATURES.autoDetect); }
+function detectedPending() { return autoDetectOn() ? STATE.pendingDetected : []; }
 
 // ============================================================
 // SCREEN — Permission (auto-detect opt-in)
@@ -486,6 +491,7 @@ function renderPermission() {
   `;
 }
 function enableAutoDetect() {
+  if (!autoDetectOn()) return skipAutoDetect();
   STATE.autoDetectEnabled = true;
   STATE.pendingDetected = TaxEngine.DEMO_DETECTED_SEED.map((d) => ({ ...d }));
   enterAppOrSharedReceipt();
@@ -518,7 +524,7 @@ function enterAppOrSharedReceipt() {
 // SCREEN — Quick Confirm (review detected payments)
 // ============================================================
 function renderQuickConfirm() {
-  const items = STATE.pendingDetected;
+  const items = detectedPending();
   const c = el("s-quickconfirm").querySelector(".container");
   if (items.length === 0) {
     c.innerHTML = `
@@ -562,11 +568,13 @@ function qcCardHTML(d) {
     </div>`;
 }
 function qcDismiss(id) {
+  if (!autoDetectOn()) return;
   STATE.pendingDetected = STATE.pendingDetected.filter((d) => d.id !== id);
   showToast(t("quickconfirm.dismissedToast"));
   renderQuickConfirm();
 }
 function qcConfirm(id) {
+  if (!autoDetectOn()) return;
   const d = STATE.pendingDetected.find((x) => x.id === id);
   if (!d) return;
   STATE.receipts.push({
@@ -579,6 +587,7 @@ function qcConfirm(id) {
   renderQuickConfirm();
 }
 function qcEditOrSplit(id) {
+  if (!autoDetectOn()) return;
   const d = STATE.pendingDetected.find((x) => x.id === id);
   if (!d) return;
   STATE.reviewDraft = { vendor: d.vendor, date: new Date().toISOString().slice(0, 10), amount: d.amount, category: d.category || "", notes: "", photo: null, lowConfidence: [], landlordPan: "", landlordRelationship: "", familyMember: "", paymentMode: "" };
@@ -1489,13 +1498,13 @@ function renderOverviewView() {
   const saved = computeSavedVsNoDeductions();
   const gap = cmp.oldTax - cmp.newTax; // >0 => New Regime cheaper
   const newBetter = gap > 0;
-  const pending = STATE.pendingDetected.length;
+  const pending = detectedPending().length;
   const regimePill = STATE.regime === "compare" ? t("overview.comparingRegimes") : STATE.regime === "old" ? t("common.oldRegime") : t("common.newRegime");
 
   const detectBanner = pending > 0 ? `
     <button type="button" class="card" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; width:100%; text-align:left;" data-act="goto-quickconfirm">
       <div><div style="font-weight:700;">${t("overview.detectBannerTitle", { n: pending, s: pending > 1 ? "s" : "" })}</div>
-      <div class="meta">${t("overview.detectBannerMeta", { vendors: STATE.pendingDetected.map((d) => d.vendor).join(", ") })}</div></div>
+      <div class="meta">${t("overview.detectBannerMeta", { vendors: detectedPending().map((d) => d.vendor).join(", ") })}</div></div>
       <span class="chip st-room">${ic("clock")}${t("overview.reviewArrow")}</span>
     </button>` : "";
 
@@ -1560,7 +1569,7 @@ function renderReceiptsView() {
     })
     .slice().reverse();
 
-  const pending = STATE.pendingDetected.length;
+  const pending = detectedPending().length;
   const detectBanner = pending > 0 ? `
     <button type="button" class="card" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; width:100%; text-align:left;" data-act="goto-quickconfirm">
       <div><div style="font-weight:700;">${t("overview.detectBannerTitle", { n: pending, s: pending > 1 ? "s" : "" })}</div>
@@ -1571,7 +1580,7 @@ function renderReceiptsView() {
   const rows = list.map((r) => {
     const mapped = TaxEngine.CATEGORY_MAP[r.category];
     const flagged = isReceiptFlagged(r);
-    return `<tr><td class="num">${fmtD(r.date)}</td><td><b style="font-weight:600">${r.vendor}</b>${r.familyMember ? `<div class="meta">${escAttr(r.familyMember)}</div>` : ""}</td><td>${r.category}</td><td>${mapped && mapped.group === "hra" ? t("receipts.hraExemptionLabel") : mapped && mapped.label ? mapped.label : t("common.notCounted")}</td><td class="r num">${inr(r.amount)}<div class="meta">${savingTableText(r)}</div></td><td>${flagged ? chip("check", t("receipts.doubleCheckChip")) : chip("done", t("receipts.savedChip"))}</td></tr>`;
+    return `<tr><td class="num" data-label="${escAttr(t("receipts.tableDate"))}">${fmtD(r.date)}</td><td class="c-main" data-label="${escAttr(t("receipts.tablePaidTo"))}"><b style="font-weight:600">${r.vendor}</b>${r.familyMember ? `<div class="meta">${escAttr(r.familyMember)}</div>` : ""}</td><td data-label="${escAttr(t("receipts.tableCategory"))}">${r.category}</td><td data-label="${escAttr(t("receipts.tableCounts"))}">${mapped && mapped.group === "hra" ? t("receipts.hraExemptionLabel") : mapped && mapped.label ? mapped.label : t("common.notCounted")}</td><td class="r num" data-label="${escAttr(t("receipts.tableAmount"))}">${inr(r.amount)}<div class="meta">${savingTableText(r)}</div></td><td data-label="${escAttr(t("receipts.tableState"))}">${flagged ? chip("check", t("receipts.doubleCheckChip")) : chip("done", t("receipts.savedChip"))}</td></tr>`;
   }).join("");
 
   return headBar(t("receipts.headerTitle")) + detectBanner + `
@@ -1656,7 +1665,7 @@ function renderReportView() {
   const data = buildReportData();
   const rows = data.deductionRows.map((r) => {
     const st = r.hasRoom ? chip("room", t("report.moreRoom", { amount: fmtINR(r.room) })) : chip("done", t("report.fullyUsed"));
-    return `<tr><td><b style="font-weight:600">${r.sectionNew}</b><div class="meta">${r.sectionOld}</div></td><td class="r num">${inr(r.used)}</td><td class="r num">${inr(r.cap)}</td><td>${st}</td></tr>`;
+    return `<tr><td class="c-main" data-label="${escAttr(t("report.tableSection"))}"><b style="font-weight:600">${r.sectionNew}</b><div class="meta">${r.sectionOld}</div></td><td class="r num" data-label="${escAttr(t("report.tableUsed"))}">${inr(r.used)}</td><td class="r num" data-label="${escAttr(t("report.tableCap"))}">${inr(r.cap)}</td><td data-label="${escAttr(t("report.tableStatus"))}">${st}</td></tr>`;
   }).join("");
   return `<div id="view-report">` + headBar(t("report.headerTitle", { fy: FY_LABEL }), t("report.headerSub")) + `
   <div class="big-disc">${ic("info")}<span>${data.bigDisclaimer}</span></div>
@@ -1882,7 +1891,7 @@ function renderSettingsView() {
     ${row(t("settings.parentsSeniorLabel"), t("settings.parentsSeniorHelp"), sw("parentsSenior", t("settings.parentsSeniorAria"), () => ob.section126.parentsSenior, false))}
     ${row(t("settings.cityLabel"), t("settings.cityHelp"), `<input class="txt" id="set-city" value="${escAttr(ob.city)}" aria-label="${t("settings.cityAria")}">`)}
     ${row(t("settings.exactIncomeLabel"), t("settings.exactIncomeHelp", { amount: fmtINR(currentIncome()) }), `<input class="txt" id="set-income" type="number" value="${STATE.income || ""}" placeholder="₹" aria-label="${t("settings.exactIncomeLabel")}">`)}
-    ${row(t("settings.autoDetectLabel"), t("settings.autoDetectHelp"), sw("autoDetectEnabled", t("settings.autoDetectLabel"), () => STATE.autoDetectEnabled, false))}
+    ${autoDetectOn() ? row(t("settings.autoDetectLabel"), t("settings.autoDetectHelp"), sw("autoDetectEnabled", t("settings.autoDetectLabel"), () => STATE.autoDetectEnabled, false)) : ""}
    </section>
    ${familyMembersSection()}
    ${vendorMemorySection()}
@@ -2032,7 +2041,7 @@ document.addEventListener("click", (e) => {
   if (act === "check-form130") { ["gross", "s123", "s126", "tds"].forEach((k) => { STATE.form130[k] = el("f130-" + k).value.trim(); }); renderApp(); }
   if (act === "goto-camera") gotoCamera();
   if (act === "enter-manually") enterManually();
-  if (act === "goto-quickconfirm") show("s-quickconfirm");
+  if (act === "goto-quickconfirm" && autoDetectOn()) show("s-quickconfirm");
   if (act === "export-pdf") exportPDF();
   if (act === "export-employer-pack") exportEmployerProofPack();
   if (act === "add-family-member") {
@@ -2104,7 +2113,7 @@ function toggleField(key, isAppearance) {
     renderApp();
     return;
   }
-  if (key === "autoDetectEnabled") {
+  if (key === "autoDetectEnabled" && autoDetectOn()) {
     STATE.autoDetectEnabled = !STATE.autoDetectEnabled;
     if (STATE.autoDetectEnabled && STATE.pendingDetected.length === 0) STATE.pendingDetected = TaxEngine.DEMO_DETECTED_SEED.map((d) => ({ ...d }));
     renderApp();

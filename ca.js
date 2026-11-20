@@ -190,7 +190,7 @@ const TODAY = (() => {
 
 // ---------- helpers ----------
 function caInr(n) { return "₹" + Math.round(n).toLocaleString(CS.numFormat === "intl" ? "en-US" : "en-IN"); }
-function caPan(p) { if (p.charAt(0) === "•") return p; /* imported: already masked, last 4 only */ return CS.maskPan ? p.slice(0, 3) + "••••" + p.slice(-2) : p; }
+function caPan(p) { /* one format everywhere: XXXXXX + last 4. Imported PANs are stored already masked (last 4 only). */ return (CS.maskPan || /^[•X]/.test(p)) ? caMaskPan4(p) : p; }
 const OLD_SEC_NO = { 123: "80C", 124: "80CCD(1B)", 126: "80D", 22: "24(b)", 133: "80G" };
 function caSec(n) {
   if (n === "HRA") return "HRA";
@@ -462,7 +462,7 @@ function caDetail() {
    ${items.length ? caReasonField() + items.map(caRvCard).join("") : `<p class="muted" style="font-size:.84rem">${t("detail.nothingToReview")}</p>`}</div>
    ${caActivity(c.id, 5)}
    <div style="display:grid;gap:.3rem"><label class="eyebrow" for="cnote">${t("detail.privateNoteLabel")}</label><textarea id="cnote" placeholder="${t("detail.privateNotePlaceholder")}"></textarea></div>
-   <div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn" type="button" data-toast="${t("detail.exportSummaryToast")}">${ic("down")}${t("detail.exportSummary")}</button><button class="btn ghost" type="button" data-evidence="${c.id}">${ic("down")}${t("evidence.button")}</button><button class="btn ghost" type="button" data-readiness="${c.id}">${ic("down")}${t("readiness.button")}</button><button class="btn ghost" type="button" data-yreview="${c.id}">${ic("down")}${t("yreview.button")}</button>${clientDocs(c).missing.length ? `<a class="btn ghost" href="${caWaLink(c, clientDocs(c).missing)}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("detail.askClient")}</a>` : `<button class="btn ghost" type="button" data-toast="${t("detail.askClientToast")}">${ic("msg")}${t("detail.askClient")}</button>`}</div>
+   <div style="display:flex;gap:.4rem;flex-wrap:wrap"><button class="btn" type="button" disabled title="${t("common.demoOnly")}">${ic("down")}${t("detail.exportSummary")} · ${t("common.demoOnly")}</button><button class="btn ghost" type="button" data-evidence="${c.id}">${ic("down")}${t("evidence.button")}</button><button class="btn ghost" type="button" data-readiness="${c.id}">${ic("down")}${t("readiness.button")}</button><button class="btn ghost" type="button" data-yreview="${c.id}">${ic("down")}${t("yreview.button")}</button>${clientDocs(c).missing.length ? `<a class="btn ghost" href="${caWaLink(c, clientDocs(c).missing)}" target="_blank" rel="noopener noreferrer">${ic("msg")}${t("detail.askClient")}</a>` : `<button class="btn ghost" type="button" data-toast="${t("detail.askClientToast")}">${ic("msg")}${t("detail.askClient")}</button>`}</div>
    <p class="muted" style="font-size:.76rem">${t("detail.footerNote")}</p>
   </aside>`;
 }
@@ -565,7 +565,7 @@ function caInviteView() {
   return `<div class="ph"><h1>${t("invite.title")}</h1><span class="pill">${t("invite.demoPill")}</span></div><p class="muted" style="font-size:.86rem">${t("invite.sub")}</p><div class="note-box">${ic("info")}<span>${t("invite.demoNote")}</span></div><section class="cardx"><header><h2>${t("invite.flowTitle")}</h2></header><div class="fbar">${chips}</div><p style="padding:.2rem 1rem .6rem">${cur}</p></section>${draft}${land}<div class="note-box">${ic("info")}<span>${t("invite.rules")}</span></div>${CA_DISC}`;
 }
 const CA_VIEWS = {
-  clients() { return { main: `<div class="ph"><h1>${t("clients.title")}</h1><span class="pill">${t("common.sampleData")}</span><button class="btn ghost" type="button" data-go="invite">${t("clients.inviteClient")}</button><button class="btn" type="button" data-toast="${t("clients.exportToast")}">${ic("down")}${t("clients.export")}</button></div>${caKpis()}${caBulkPanel()}${caRoomPanel()}${caOppPanel()}${caClientTable()}`, detail: true }; },
+  clients() { return { main: `<div class="ph"><h1>${t("clients.title")}</h1><span class="pill">${t("common.sampleData")}</span><button class="btn ghost" type="button" data-go="invite">${t("clients.inviteClient")}</button><button class="btn" type="button" disabled title="${t("common.demoOnly")}">${ic("down")}${t("clients.export")} · ${t("common.demoOnly")}</button></div>${caKpis()}${caBulkPanel()}${caRoomPanel()}${caOppPanel()}${caClientTable()}`, detail: true }; },
   dash() {
     const open = Q.filter((q) => q.state === "open");
     return { main: `<div class="ph"><h1>${t(caGreetingKey())}</h1><span class="muted" style="font-size:.85rem">${t("dash.practiceLine", { n: C.length })}</span></div>${caKpis()}
@@ -594,7 +594,7 @@ const CA_VIEWS = {
   plan() { return { main: caPlanView(), detail: false }; },
   invite() { return { main: caInviteView(), detail: false }; },
   reports() { return { main: `<div class="ph"><h1>${t("reports.title")}</h1></div><section class="cardx"><header><h2>${t("reports.exportsHeader")}</h2><p>${t("reports.exportsSub")}</p></header>
-    ${(CA_LOCALE.ca.reports.items || []).map(({ title, help }) => `<div class="row"><div><span class="lbl">${title}</span><p class="help">${help}</p></div><button class="btn ghost" type="button" data-toast="${t("reports.exportToast")}">${ic("down")}${t("reports.exportBtn")}</button></div>`).join("")}</section>
+    ${(CA_LOCALE.ca.reports.items || []).map(({ title, help }) => `<div class="row"><div><span class="lbl">${title}</span><p class="help">${help}</p></div><button class="btn ghost" type="button" disabled title="${t("common.demoOnly")}">${ic("down")}${t("reports.exportBtn")} · ${t("common.demoOnly")}</button></div>`).join("")}</section>
     <div class="note-box">${ic("info")}<span>${t("reports.noteBox")}</span></div>`, detail: false }; },
   settings() {
     const seg = (k, o) => `<div class="seg">${o.map(([v, label, i]) => `<button type="button" data-set="${k}" data-val="${v}" aria-pressed="${CS[k] === v}">${i ? ic(i) : ""}${label}</button>`).join("")}</div>`;
@@ -691,7 +691,7 @@ function caImportParse(text) {
   return { rows, ignored, total: rows.length, ok: rows.filter((r) => !r.errors.length).length };
 }
 function caMakeClient(f, id) {
-  return { id, name: caCleanName(f.name), pan: "••••••" + String(f.last4).slice(-4), type: f.type, inc: f.inc || 0, s123: 0, s124: 0, s126: 0, s126p: 0, s22: 0, hra: 0, rc: 0, rev: 0, last: "—", elected: f.regime || "New", s133: 0, rent: f.rent || 0, landlordPan: !!f.landlordPan, flags: Object.assign({}, f.flags), imported: true };
+  return { id, name: caCleanName(f.name), pan: "XXXXXX" + String(f.last4).slice(-4), type: f.type, inc: f.inc || 0, s123: 0, s124: 0, s126: 0, s126p: 0, s22: 0, hra: 0, rc: 0, rev: 0, last: "—", elected: f.regime || "New", s133: 0, rent: f.rent || 0, landlordPan: !!f.landlordPan, flags: Object.assign({}, f.flags), imported: true };
 }
 function caImportSave() { try { localStorage.setItem(CA_IMPORT_CONFIG.storeKey, JSON.stringify(C.filter((c) => c.imported))); } catch (e) {} }
 function caImportLoad() {
@@ -739,8 +739,8 @@ function caImportView() {
     prev = `<section class="cardx" data-imp-preview><header><h2>${t("import.step3")}</h2><p>${t("import.summary", { total: caImp.total, ok: caImp.ok, bad })}</p></header>
     ${caImp.ignored.length ? `<p class="muted" style="font-size:.8rem">${t("import.ignored", { cols: caEsc(caImp.ignored.join(", ")) })}</p>` : ""}
     <div class="grid" role="region" aria-label="${t("import.step3")}" style="max-height:none"><table><thead><tr><th>${t("import.colLine")}</th><th>${t("import.colName")}</th><th>${t("import.colPan")}</th><th>${t("import.colType")}</th><th class="r">${t("import.colIncome")}</th><th>${t("import.colFlags")}</th><th>${t("import.colCheck")}</th></tr></thead><tbody>
-    ${caImp.rows.map((r) => `<tr data-improw="${r.line}"><td class="num">${r.line}</td><td class="cname">${caEsc(r.name)}</td><td class="pan">${r.last4 ? "••••••" + caEsc(r.last4) : "–"}</td><td>${caEsc(r.type) || "–"}</td><td class="r num">${caInr(r.inc)}</td><td>${caEsc(flagText(r.flags))}</td><td>${chk(r)}</td></tr>`).join("")}</tbody></table></div>
-    <div class="cards" role="list" aria-label="${t("import.step3")}">${caImp.rows.map((r) => `<article class="ccard" role="listitem" data-improw="${r.line}"><div class="h"><b>${caEsc(r.name) || "–"}</b><span class="muted">#${r.line}</span></div><span class="muted sub">${caEsc(r.type) || "–"} · <span class="pan">${r.last4 ? "••••••" + caEsc(r.last4) : "–"}</span> · <span class="num">${caInr(r.inc)}</span></span><span class="sub">${caEsc(flagText(r.flags))}</span><span>${chk(r)}</span></article>`).join("")}</div>
+    ${caImp.rows.map((r) => `<tr data-improw="${r.line}"><td class="num">${r.line}</td><td class="cname">${caEsc(r.name)}</td><td class="pan">${r.last4 ? "XXXXXX" + caEsc(r.last4) : "–"}</td><td>${caEsc(r.type) || "–"}</td><td class="r num">${caInr(r.inc)}</td><td>${caEsc(flagText(r.flags))}</td><td>${chk(r)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="cards" role="list" aria-label="${t("import.step3")}">${caImp.rows.map((r) => `<article class="ccard" role="listitem" data-improw="${r.line}"><div class="h"><b>${caEsc(r.name) || "–"}</b><span class="muted">#${r.line}</span></div><span class="muted sub">${caEsc(r.type) || "–"} · <span class="pan">${r.last4 ? "XXXXXX" + caEsc(r.last4) : "–"}</span> · <span class="num">${caInr(r.inc)}</span></span><span class="sub">${caEsc(flagText(r.flags))}</span><span>${chk(r)}</span></article>`).join("")}</div>
     <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem"><button class="btn" type="button" data-imp="import"${caImp.ok ? "" : " disabled"}>${ic("check")}${t("import.importBtn", { n: caImp.ok })}</button><button class="btn ghost" type="button" data-imp="clear">${t("import.clearBtn")}</button></div></section>`;
   }
   return `<div class="ph"><h1>${t("import.title")}</h1></div>

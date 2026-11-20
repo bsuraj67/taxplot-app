@@ -14,11 +14,13 @@
  *    directly, stashes the shared file in Cache Storage, and redirects back
  *    into the app, which picks it up in app.js's loadSharedReceiptIfAny().
  */
-const CACHE_VERSION = "v1";
+// Bump CACHE_VERSION on every release: old shell caches are deleted on activate.
+const CACHE_VERSION = "v2";
 const SHELL_CACHE = `taxplot-shell-${CACHE_VERSION}`;
 // Name duplicated in app.js's loadSharedReceiptIfAny() -- the two sides of
 // the share hand-off agree on it, there's no API to look it up dynamically.
-const SHARE_CACHE = `taxplot-share-${CACHE_VERSION}`;
+// Fixed (not tied to CACHE_VERSION) so bumping the shell version never breaks it.
+const SHARE_CACHE = "taxplot-share-v1";
 const SHARED_RECEIPT_KEY = "/shared-receipt";
 
 const SHELL_ASSETS = [
@@ -37,7 +39,7 @@ const SHELL_ASSETS = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
+      .then((cache) => cache.addAll(SHELL_ASSETS.map((u) => new Request(u, { cache: "reload" }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -61,16 +63,17 @@ self.addEventListener("fetch", (event) => {
   }
   if (req.method !== "GET") return;
 
-  // Cache-first for the app shell, falling back to network and topping up
-  // the cache; falls back to whatever's cached (even if stale) if offline.
+  // Network-first: a new release is picked up on the first load; the cache is
+  // only the offline fallback. cache:"no-cache" makes the browser revalidate
+  // instead of reusing its HTTP cache (Pages serves max-age=600).
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req).then((res) => {
-        if (res && res.ok) caches.open(SHELL_CACHE).then((cache) => cache.put(req, res.clone()));
-        return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
+    fetch(req, { cache: "no-cache" }).then((res) => {
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(SHELL_CACHE).then((cache) => cache.put(req, copy));
+      }
+      return res;
+    }).catch(() => caches.match(req, { ignoreSearch: true }).then((cached) => cached || (req.mode === "navigate" ? caches.match("./index.html") : undefined) || Response.error()))
   );
 });
 

@@ -15,7 +15,7 @@
  *    into the app, which picks it up in app.js's loadSharedReceiptIfAny().
  */
 // Bump CACHE_VERSION on every release: old shell caches are deleted on activate.
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const SHELL_CACHE = `taxplot-shell-${CACHE_VERSION}`;
 // Name duplicated in app.js's loadSharedReceiptIfAny() -- the two sides of
 // the share hand-off agree on it, there's no API to look it up dynamically.
@@ -27,6 +27,8 @@ const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./app.js",
+  "./ca.html",
+  "./ca.js",
   "./tax-engine.js",
   "./style.css",
   "./manifest.json",

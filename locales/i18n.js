@@ -16,6 +16,8 @@
  */
 function loadLocale(path) {
   try {
+    // Preloaded by the page (see index.html / ca.html) so it works offline via the service worker cache.
+    if (typeof window !== "undefined" && window.__TP_LOCALES && window.__TP_LOCALES[path]) return JSON.parse(window.__TP_LOCALES[path]);
     const xhr = new XMLHttpRequest();
     xhr.open("GET", path, false);
     xhr.send(null);

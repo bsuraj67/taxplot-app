@@ -52,8 +52,15 @@ if(s.motion==="reduce")r.dataset.motion="reduce";if(s.hideAmounts)r.dataset.hide
 <div class="sheet-overlay" id="glossary-sheet" hidden></div>
 <div class="sheet-overlay" id="dpdp-sheet" hidden></div>
 
-<script src="tax-engine.js"></script>
-<script src="locales/i18n.js"></script>
-<script src="app.js"></script>
+<script>
+/* Preload locale JSON with fetch() so the service worker's cache serves it offline (a sync XHR was not reliably served from the SW cache, issue #28), then load the app scripts in order. loadLocale() in locales/i18n.js uses window.__TP_LOCALES when present and falls back to its sync XHR. */
+(function () {
+  var L = window.__TP_LOCALES = {};
+  function add(src) { return new Promise(function (ok, no) { var s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = no; document.body.appendChild(s); }); }
+  Promise.all(["locales/en.json", "locales/glossary.en.json"].map(function (f) {
+    return fetch(f).then(function (r) { if (!r.ok) throw new Error(f); return r.text(); }).then(function (t) { JSON.parse(t); L[f] = t; }).catch(function () {});
+  })).then(function () { return add("tax-engine.js"); }).then(function () { return add("locales/i18n.js"); }).then(function () { return add("app.js"); }).then(function () { document.dispatchEvent(new Event("DOMContentLoaded")); /* app.js inits on this event, which already fired */ });
+})();
+</script>
 </body>
 </html>

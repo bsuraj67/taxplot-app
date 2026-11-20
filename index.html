@@ -21,7 +21,7 @@ if(s.motion==="reduce")r.dataset.motion="reduce";if(s.hideAmounts)r.dataset.hide
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wght@400..800&family=Mukta:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=v4">
+<link rel="stylesheet" href="style.css?v=v5">
 </head>
 <body>
 
@@ -55,7 +55,7 @@ if(s.motion==="reduce")r.dataset.motion="reduce";if(s.hideAmounts)r.dataset.hide
 <script>
 /* Preload locale JSON with fetch() so the service worker's cache serves it offline (a sync XHR was not reliably served from the SW cache, issue #28), then load the app scripts in order. loadLocale() in locales/i18n.js uses window.__TP_LOCALES when present and falls back to its sync XHR. */
 (function () {
-  var V = "v4"; /* keep equal to CACHE_VERSION in sw.js: bump both each release so scripts bypass the 10-minute HTTP cache */
+  var V = "v7"; /* keep equal to CACHE_VERSION in sw.js: bump both each release so scripts bypass the 10-minute HTTP cache */
   var L = window.__TP_LOCALES = {};
   function add(src) { return new Promise(function (ok, no) { var s = document.createElement("script"); s.src = src + "?v=" + V; s.onload = ok; s.onerror = no; document.body.appendChild(s); }); }
   Promise.all(["locales/en.json", "locales/glossary.en.json"].map(function (f) {

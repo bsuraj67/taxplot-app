@@ -584,6 +584,9 @@
       "colStatus": "Status",
       "colLastUpload": "Last upload",
       "byAmount": "by {{amount}}",
+      "notEnoughData": "Not enough data",
+      "notEnoughDataDetail": "Nothing is logged for this client yet, so there is not enough data to compare the regimes.",
+      "regimeEstimateNote": "Estimate only. It leaves out surcharge, senior-citizen rates and differences for non-salaried income, so the real figure can differ. Your CA decides.",
       "selectAllAria": "Select all",
       "selectClientAria": "Select {{name}}",
       "colDocs": "Documents",
@@ -633,6 +636,8 @@
       "docsHeader": "Documents ({{got}} of {{need}} received)",
       "docGot": "Received",
       "docMissing": "Missing",
+      "docTickAria": "Mark {{doc}} as received",
+      "docTickHelp": "Tick each document once you have received it. Kept on this device only.",
       "docsNoneNeeded": "No documents needed yet.",
       "typeAndImported": "{{type}} · imported on this device"
     },
@@ -755,6 +760,26 @@
         }
       ],
       "noteBox": "TaxPlot does not file returns. Exports are working papers for your own software. If you want filing from inside TaxPlot later, it needs ERI registration with the Income Tax Department."
+    },
+    "data": {
+      "header": "Data on this device",
+      "sub": "Client data entered or imported here is kept only in this browser on this device. TaxPlot does not upload it and cannot recover it for you.",
+      "backupLabel": "Back up CA data",
+      "backupHelp": "Saves a file with imported clients, notices, notes, plan ticks, document ticks and review decisions. The file is not encrypted and holds your clients' personal details (names and PAN endings), so treat it as sensitive: store it privately and delete it when you no longer need it.",
+      "backupBtn": "Download backup",
+      "backupDone": "Backup downloaded.",
+      "restoreLabel": "Restore from a backup file",
+      "restoreHelp": "Replaces the CA data on this device with the data in the backup file. Only use a file you made yourself and trust.",
+      "restoreBad": "That file could not be restored. Choose a TaxPlot CA backup file.",
+      "restored": "Backup restored.",
+      "clearLabel": "Clear all CA data on this device",
+      "clearHelp": "Removes imported clients, notices, notes, ticks and review decisions from this browser. Appearance settings stay. This cannot be undone, so back up first if you need the data. Backup files you saved earlier are not deleted.",
+      "clearBtn": "Clear all CA data",
+      "clearConfirm": "Click again to clear all CA data",
+      "cleared": "All CA data on this device was cleared.",
+      "deleteClient": "Delete this client",
+      "deleteClientConfirm": "Click again to delete {{name}}",
+      "clientDeleted": "Client deleted from this device. Any backup file you saved earlier still contains them."
     },
     "settings": {
       "title": "Settings",
@@ -977,6 +1002,9 @@
       "importBtn": "Import {{n}} ready rows",
       "clearBtn": "Clear preview",
       "done": "Imported {{n}} clients. They are in the Clients list now.",
+      "doneSkipped": "Imported {{n}} clients. Skipped {{skipped}} already in the list.",
+      "nothingNew": "Nothing new to import: {{skipped}} rows are already in the Clients list.",
+      "summaryDups": "{{n}} already in the Clients list will be skipped.",
       "nothing": "Nothing to import: no rows are ready.",
       "removeBtn": "Remove all imported clients",
       "removeConfirm": "Click again to remove {{n}} imported clients",
@@ -999,7 +1027,7 @@
       "errFlag": "{{col}}: use yes or no (or blank)",
       "errRent": "Rent paid is not a number",
       "warnName": "Some characters were removed from the name",
-      "warnDup": "A client with this name and PAN ending already exists",
+      "warnDup": "A client with this name and PAN ending is already here, so this row will be skipped",
       "yes": "yes",
       "flag": {
         "rent": "Rent",
@@ -1165,7 +1193,7 @@
       "pan": "PAN {{pan}}",
       "kindRoom": "{{sec}}: {{amount}} of cap room not yet logged",
       "kindParents": "{{sec}}: no parents' health-insurance premium logged yet. You may want to ask the client whether it applies (cap {{cap}})",
-      "kindLandlord": "Rent of {{rent}} a year is over the {{threshold}} landlord-PAN threshold and no landlord PAN is on record. The HRA exemption may be affected, so check the position with the client. The estimate is the tax effect of the whole HRA exemption, so treat it as the upper end of what could change",
+      "kindLandlord": "Rent of {{rent}} a year is over the {{threshold}} landlord-PAN threshold and no landlord PAN is on record. The HRA exemption may be at risk if the employer will not accept it without a landlord PAN, so check the position with the client. The estimate shows the tax effect of the whole HRA exemption, so treat it as the upper end of what could change",
       "value": "about {{amount}} (estimate)",
       "none": "No old-regime client has an item to look at right now.",
       "note": "Informational estimate, not tax advice. Based on sample data and logged receipts only; the real effect depends on the client's full facts, and a claim needs valid proof. TaxPlot does not contact anyone."

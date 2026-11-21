@@ -15,7 +15,7 @@
  *    into the app, which picks it up in app.js's loadSharedReceiptIfAny().
  */
 // Bump CACHE_VERSION on every release: old shell caches are deleted on activate.
-const CACHE_VERSION = "v7"; // keep equal to V in index.html and ca.html (scripts are requested as ?v=<version>)
+const CACHE_VERSION = "v11"; // keep equal to V in index.html and ca.html (scripts are requested as ?v=<version>)
 const SHELL_CACHE = `taxplot-shell-${CACHE_VERSION}`;
 // Name duplicated in app.js's loadSharedReceiptIfAny() -- the two sides of
 // the share hand-off agree on it, there's no API to look it up dynamically.
@@ -36,6 +36,8 @@ const SHELL_ASSETS = [
   `./locales/en.json?v=${CACHE_VERSION}`,
   `./locales/glossary.en.json?v=${CACHE_VERSION}`,
   "./apple-touch-icon.png",
+  `./vendor/jspdf.umd.min.js?v=${CACHE_VERSION}`,
+  `./vendor/jspdf.plugin.autotable.min.js?v=${CACHE_VERSION}`,
 ];
 
 self.addEventListener("install", (event) => {

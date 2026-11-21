@@ -2,6 +2,7 @@
 <html lang="en-IN" data-density="compact">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-pxjxTOjo0CWpiuPMAUKDep8TrQXkB6hT72JrfMPKjSo=' 'sha256-rTp2EVzbkrMHQF/Jjy5Hl8FsiGhjp9W+748azZZB3RI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>TaxPlot for CAs</title>
 <meta name="theme-color" content="#00657E">
@@ -44,8 +45,8 @@ if(s.text==="large")r.dataset.text="large";}catch(e){}})();
 /* Preload locale JSON with fetch() so the service worker's cache serves it offline (a sync XHR was not reliably served from the SW cache, issue #28), then load the app scripts in order. loadLocale() in locales/i18n.js uses window.__TP_LOCALES when present and falls back to its sync XHR. */
 (function () {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {}); /* same worker as the consumer app: lets the CA workspace load offline too */
-  var V = "v7"; /* keep equal to CACHE_VERSION in sw.js: bump both each release so scripts bypass the 10-minute HTTP cache */
-  var L = window.__TP_LOCALES = {};
+  var V = "v11"; /* keep equal to CACHE_VERSION in sw.js: bump both each release so scripts bypass the 10-minute HTTP cache */
+  var L = window.__TP_LOCALES = {}; window.__TP_V = V;
   function add(src) { return new Promise(function (ok, no) { var s = document.createElement("script"); s.src = src + "?v=" + V; s.onload = ok; s.onerror = no; document.body.appendChild(s); }); }
   Promise.all(["locales/en.json", "locales/glossary.en.json"].map(function (f) {
     return fetch(f + "?v=" + V).then(function (r) { if (!r.ok) throw new Error(f); return r.text(); }).then(function (t) { JSON.parse(t); L[f] = t; }).catch(function () {});

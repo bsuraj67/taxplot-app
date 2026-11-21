@@ -325,7 +325,7 @@ function meter(used, cap, st, segs) {
   return `<div class="meter ${st}" role="img" aria-label="${fmtINR(used)} of ${fmtINR(cap)} used">${(segs || [used]).map((a) => `<i style="width:${Math.min(100, (a / cap) * 100)}%"></i>`).join("")}</div>`;
 }
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
-function escAttr(s) { return String(s).replace(/"/g, "&quot;"); }
+function escAttr(s) { return esc(s); } // full escape: safe in text and in attributes
 const DISC = `<p class="disc">${ic("info")}${t("common.disclaimer")}</p>`;
 
 // ============================================================
@@ -559,10 +559,10 @@ function qcCardHTML(d) {
       </div>`;
   return `
     <div class="qc-card">
-      <div class="qc-source"><span class="dot"></span>${d.source}</div>
-      <div class="qc-vendor">${d.vendor}</div>
+      <div class="qc-source"><span class="dot"></span>${esc(d.source)}</div>
+      <div class="qc-vendor">${esc(d.vendor)}</div>
       <div class="qc-amt">${fmtINR(d.amount)}</div>
-      <div class="qc-meta">${d.meta}</div>
+      <div class="qc-meta">${esc(d.meta)}</div>
       ${guess}
       ${actions}
     </div>`;
@@ -644,7 +644,7 @@ function paintCamera() {
   } else if (cam.phase === "freeze") {
     view.innerHTML = `
       <div class="freeze-frame">
-        <img class="freeze-thumb" src="${cam.photo}" alt="Captured receipt" />
+        <img class="freeze-thumb" src="${escAttr(cam.photo)}" alt="Captured receipt" />
         ${cam.blurry ? `<p class="cam-warn" role="status">${t("camera.blurWarning")}</p>` : ""}
         ${(cam.pages || []).length >= CAPTURE_MAX_PAGES - 1 ? `<p class="cam-warn">${t("camera.maxPages")}</p>` : ""}
         <div class="freeze-actions">
@@ -655,7 +655,7 @@ function paintCamera() {
       </div>`;
   } else if (cam.phase === "loading") {
     view.innerHTML = `
-      <img class="freeze-thumb" src="${cam.photo}" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.5; border-radius:0;" alt="" />
+      <img class="freeze-thumb" src="${escAttr(cam.photo)}" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.5; border-radius:0;" alt="" />
       <div class="loading-strip">${t("camera.loading")}</div>
     `;
   } else if (cam.phase === "preparing") {
@@ -846,7 +846,7 @@ function renderReview() {
       <h2>${t(prefilled ? "review.heading" : "review.headingBlank")}</h2>
       <p>${t(prefilled ? "review.sub" : "review.subBlank")}</p>
     </div>
-    <div class="review-thumb">${d.photo ? `<img src="${d.photo}" alt="Receipt" />` : t("review.noPhoto")}</div>
+    <div class="review-thumb">${d.photo ? `<img src="${escAttr(d.photo)}" alt="Receipt" />` : t("review.noPhoto")}</div>
 
     ${STATE.reviewDraftSource === "manual" ? quickChips(d) : ""}
     <div class="field">
@@ -856,11 +856,11 @@ function renderReview() {
     </div>
     <div class="field">
       <label>${t("review.dateLabel")}
-      <input class="input" type="date" data-field="date" value="${d.date}" /></label>
+      <input class="input" type="date" data-field="date" value="${escAttr(d.date)}" /></label>
     </div>
     <div class="field">
       <label>${t("review.amountLabel")}
-      <input class="input amt" type="number" data-field="amount" value="${d.amount}" placeholder="0" /></label>
+      <input class="input amt" type="number" data-field="amount" value="${escAttr(d.amount)}" placeholder="0" /></label>
       ${flag("amount")}
     </div>
     <div class="field">
@@ -1117,17 +1117,90 @@ function idbRun(mode, fn) {
 function buildBackup() {
   return { app: "taxplot", version: 1, savedAt: new Date().toISOString(), onboarding: STATE.onboarding, regime: STATE.regime, income: STATE.income, receipts: STATE.receipts, familyMembers: STATE.familyMembers, hraClaimed: STATE.hraClaimed, form130: STATE.form130, vendorMemory: STATE.vendorMemory, recurring: STATE.recurring };
 }
+// Restore validation (security): a backup file is untrusted input. Keep only well-formed records.
+const BK = { fields: ["vendor", "date", "amount", "category"], sources: ["camera", "manual", "detected", "recurring", "upload"], str: 200, notes: 1000, photo: 8e6, receipts: 5000, small: 500 };
+function bkStr(v, max) { return typeof v === "string" ? v.slice(0, max || BK.str) : ""; }
+function bkReceipt(r) {
+  if (!r || typeof r !== "object") return null;
+  const amount = typeof r.amount === "number" ? r.amount : Number(r.amount);
+  const date = bkStr(r.date, 10);
+  if (!Object.prototype.hasOwnProperty.call(TaxEngine.CATEGORY_MAP, r.category)) return null;
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1e10) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(date).getTime())) return null;
+  const vendor = bkStr(r.vendor).trim();
+  if (!vendor) return null;
+  const photo = typeof r.photo === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+\/=]*$/.test(r.photo) && r.photo.length <= BK.photo ? r.photo : null;
+  return {
+    id: bkId(r.id, "r"), vendor, date, amount, category: r.category,
+    notes: bkStr(r.notes, BK.notes), photo,
+    lowConfidence: Array.isArray(r.lowConfidence) ? r.lowConfidence.filter((x) => BK.fields.includes(x)).slice(0, 10) : [],
+    source: BK.sources.includes(r.source) ? r.source : "", landlordPan: bkPan(r.landlordPan), landlordRelationship: RENT_RELATIONSHIP_OPTIONS.includes(r.landlordRelationship) ? r.landlordRelationship : "",
+    familyMember: bkStr(r.familyMember, 100), paymentMode: PAYMENT_MODE_OPTIONS.some((p) => p[0] === r.paymentMode) ? r.paymentMode : "",
+    ruleWarnings: Array.isArray(r.ruleWarnings) ? r.ruleWarnings.filter((x) => Object.prototype.hasOwnProperty.call(RULE_WARNING_KEYS, x)).slice(0, 10) : [],
+  };
+}
+function bkPan(v) { return bkStr(v, 40).replace(/[^A-Za-z0-9]/g, "").slice(0, 10); }
+function bkId(v, pre) { const x = bkStr(v, 60).replace(/[^A-Za-z0-9_-]/g, ""); return x || pre + Date.now(); }
+function bkFamily(m) {
+  if (!m || typeof m !== "object" || (m.relation !== "Parent" && m.relation !== "Child")) return null;
+  const name = bkStr(m.name, 100).trim();
+  return name ? { id: bkId(m.id, "fm"), name, relation: m.relation } : null;
+}
+function bkRecurring(x) {
+  if (!x || typeof x !== "object" || !Object.prototype.hasOwnProperty.call(TaxEngine.CATEGORY_MAP, x.category)) return null;
+  const amount = Number(x.amount), day = Number(x.day), vendor = bkStr(x.vendor).trim();
+  if (!vendor || !Number.isFinite(amount) || amount < 0 || amount > 1e10 || !Number.isInteger(day) || day < 1 || day > 31) return null;
+  return { id: bkId(x.id, "rc"), vendor, category: x.category, amount, day, landlordPan: bkPan(x.landlordPan), lastMonth: /^\d{4}-\d{1,2}$/.test(x.lastMonth) ? x.lastMonth : "" };
+}
+function bkVendorMemory(vm) {
+  const out = {};
+  if (!vm || typeof vm !== "object" || Array.isArray(vm)) return out;
+  Object.keys(vm).slice(0, BK.small).forEach((k) => {
+    const m = vm[k];
+    if (k === "__proto__" || !m || typeof m !== "object" || !Object.prototype.hasOwnProperty.call(TaxEngine.CATEGORY_MAP, m.category)) return;
+    const v = bkStr(m.vendor).trim();
+    if (v) out[k.slice(0, 100)] = { vendor: v, category: m.category };
+  });
+  return out;
+}
+// Numbers from a backup: finite, >= 0, sane size; anything else is dropped (null / "").
+function bkNum(v) { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN; return Number.isFinite(n) && n >= 0 && n <= 1e10 ? n : null; }
+function bkNumStr(v) { const n = bkNum(v); return n === null ? "" : String(n); }
+// Onboarding answers must be known option values (enums), never free text, except city (short text, always escaped when shown).
+function bkOnboarding(o) {
+  const out = freshOnboarding();
+  if (!o || typeof o !== "object" || Array.isArray(o)) return out;
+  if (EMPLOYMENT_OPTIONS.includes(o.employment)) out.employment = o.employment;
+  if (INCOME_BAND_OPTIONS.includes(o.incomeBand)) out.incomeBand = o.incomeBand;
+  if (Array.isArray(o.commitments)) out.commitments = COMMITMENT_OPTIONS.filter((c) => o.commitments.includes(c));
+  out.city = bkStr(o.city, 60);
+  const s = o.section126 && typeof o.section126 === "object" ? o.section126 : {};
+  out.section126 = { selfSenior: s.selfSenior === true, parentsSenior: s.parentsSenior === true };
+  out.step = Number.isInteger(o.step) && o.step >= 1 && o.step <= 4 ? o.step : 1;
+  out.completed = o.completed === true;
+  return out;
+}
+function bkList(arr, fn, max) {
+  const kept = arr.slice(0, max).map(fn).filter(Boolean);
+  return { kept, skipped: arr.length - kept.length };
+}
+// Returns false if the file is not a TaxPlot backup; otherwise true and sets STATE.restoreSkipped (records dropped as invalid).
 function applyBackup(b) {
   if (!b || b.app !== "taxplot" || !Array.isArray(b.receipts)) return false;
-  STATE.onboarding = Object.assign(freshOnboarding(), b.onboarding || {});
-  STATE.regime = b.regime || "new";
-  STATE.income = b.income == null ? null : b.income;
-  STATE.receipts = b.receipts;
-  STATE.familyMembers = Array.isArray(b.familyMembers) ? b.familyMembers : [];
-  STATE.hraClaimed = b.hraClaimed == null ? "" : b.hraClaimed;
-  STATE.form130 = Object.assign({ gross: "", s123: "", s126: "", tds: "" }, b.form130 || {});
-  STATE.recurring = Array.isArray(b.recurring) ? b.recurring : [];
-  STATE.vendorMemory = b.vendorMemory && typeof b.vendorMemory === "object" && !Array.isArray(b.vendorMemory) ? b.vendorMemory : {};
+  const rc = bkList(b.receipts, bkReceipt, BK.receipts);
+  const fm = bkList(Array.isArray(b.familyMembers) ? b.familyMembers : [], bkFamily, BK.small);
+  const rec = bkList(Array.isArray(b.recurring) ? b.recurring : [], bkRecurring, BK.small);
+  STATE.restoreSkipped = rc.skipped + fm.skipped + rec.skipped;
+  STATE.onboarding = bkOnboarding(b.onboarding);
+  STATE.regime = b.regime === "old" ? "old" : "new";
+  STATE.income = bkNum(b.income);
+  STATE.receipts = rc.kept;
+  STATE.familyMembers = fm.kept;
+  STATE.hraClaimed = bkNumStr(b.hraClaimed);
+  const f = b.form130 && typeof b.form130 === "object" && !Array.isArray(b.form130) ? b.form130 : {};
+  STATE.form130 = { gross: bkNumStr(f.gross), s123: bkNumStr(f.s123), s126: bkNumStr(f.s126), tds: bkNumStr(f.tds) };
+  STATE.recurring = rec.kept;
+  STATE.vendorMemory = bkVendorMemory(b.vendorMemory);
   return true;
 }
 let persistTimer = null, persistWarned = false;
@@ -1173,7 +1246,7 @@ function importBackupFile(file) {
   rd.onload = () => {
     let ok = false;
     try { ok = applyBackup(JSON.parse(rd.result)); } catch (e) {}
-    if (ok) { persistState(); showToast(t("storage.restored")); STATE.screen === "s-app" ? renderApp() : showApp("overview"); }
+    if (ok) { persistState(); showToast(STATE.restoreSkipped ? t("storage.restored") + " " + t("storage.restoredSkipped", { n: STATE.restoreSkipped }) : t("storage.restored")); STATE.screen === "s-app" ? renderApp() : showApp("overview"); }
     else showToast(t("storage.badFile"));
   };
   rd.readAsText(file);
@@ -1393,7 +1466,7 @@ function monthlyChart() {
 }
 function rrow(r) {
   const mapped = TaxEngine.CATEGORY_MAP[r.category];
-  return `<div class="rrow"><div class="rthumb">${ic("receipt")}</div><div style="min-width:0"><div class="who">${r.vendor}</div><div class="meta">${fmtD(r.date)} · ${mapped && mapped.label ? mapped.label.split(" — ")[0] : r.category}</div></div><div class="amt"><span class="num">${inr(r.amount)}</span>${isReceiptFlagged(r) ? chip("check", "Check") : ""}</div></div>`;
+  return `<div class="rrow"><div class="rthumb">${ic("receipt")}</div><div style="min-width:0"><div class="who">${esc(r.vendor)}</div><div class="meta">${fmtD(r.date)} · ${esc(mapped && mapped.label ? mapped.label.split(" — ")[0] : r.category)}</div></div><div class="amt"><span class="num">${inr(r.amount)}</span>${isReceiptFlagged(r) ? chip("check", "Check") : ""}</div></div>`;
 }
 function freelanceCard() {
   if (!(isFreelancerOrBusiness() || STATE.onboarding.employment === "Mix of these")) return "";
@@ -1504,7 +1577,7 @@ function renderOverviewView() {
   const detectBanner = pending > 0 ? `
     <button type="button" class="card" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; width:100%; text-align:left;" data-act="goto-quickconfirm">
       <div><div style="font-weight:700;">${t("overview.detectBannerTitle", { n: pending, s: pending > 1 ? "s" : "" })}</div>
-      <div class="meta">${t("overview.detectBannerMeta", { vendors: detectedPending().map((d) => d.vendor).join(", ") })}</div></div>
+      <div class="meta">${t("overview.detectBannerMeta", { vendors: esc(detectedPending().map((d) => d.vendor).join(", ")) })}</div></div>
       <span class="chip st-room">${ic("clock")}${t("overview.reviewArrow")}</span>
     </button>` : "";
 
@@ -1533,7 +1606,7 @@ function renderOverviewView() {
   const headlineSuffix = gloss("regime", onOldRegime ? t("overview.oldTaxRegimeSuffix") : t("overview.newRegimeDefaultSuffix"));
 
   return headBar(t("overview.greeting"), t("overview.greetingSub")) + `
-  <div style="display:flex;gap:.5rem;flex-wrap:wrap"><span class="pill">${regimePill}</span><span class="pill">${FY_LABEL}</span><span class="pill">${STATE.onboarding.employment || t("overview.exampleUser")}</span></div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap"><span class="pill">${regimePill}</span><span class="pill">${FY_LABEL}</span><span class="pill">${esc(STATE.onboarding.employment || t("overview.exampleUser"))}</span></div>
   <div class="hero">
    <div><span class="eyebrow">${t("overview.estimatedTaxLabel")}</span><span class="big num">${inr(headlineTax)}</span><small>${headlineSuffix}</small></div>
    <div><span class="eyebrow">${t("overview.savedHero")}</span><span class="big num">${inr(saved)}</span><small>${t("overview.savedSub")}</small></div>
@@ -1580,7 +1653,7 @@ function renderReceiptsView() {
   const rows = list.map((r) => {
     const mapped = TaxEngine.CATEGORY_MAP[r.category];
     const flagged = isReceiptFlagged(r);
-    return `<tr><td class="num" data-label="${escAttr(t("receipts.tableDate"))}">${fmtD(r.date)}</td><td class="c-main" data-label="${escAttr(t("receipts.tablePaidTo"))}"><b style="font-weight:600">${r.vendor}</b>${r.familyMember ? `<div class="meta">${escAttr(r.familyMember)}</div>` : ""}</td><td data-label="${escAttr(t("receipts.tableCategory"))}">${r.category}</td><td data-label="${escAttr(t("receipts.tableCounts"))}">${mapped && mapped.group === "hra" ? t("receipts.hraExemptionLabel") : mapped && mapped.label ? mapped.label : t("common.notCounted")}</td><td class="r num" data-label="${escAttr(t("receipts.tableAmount"))}">${inr(r.amount)}<div class="meta">${savingTableText(r)}</div></td><td data-label="${escAttr(t("receipts.tableState"))}">${flagged ? chip("check", t("receipts.doubleCheckChip")) : chip("done", t("receipts.savedChip"))}</td></tr>`;
+    return `<tr><td class="num" data-label="${escAttr(t("receipts.tableDate"))}">${fmtD(r.date)}</td><td class="c-main" data-label="${escAttr(t("receipts.tablePaidTo"))}"><b style="font-weight:600">${esc(r.vendor)}</b>${r.familyMember ? `<div class="meta">${escAttr(r.familyMember)}</div>` : ""}</td><td data-label="${escAttr(t("receipts.tableCategory"))}">${esc(r.category)}</td><td data-label="${escAttr(t("receipts.tableCounts"))}">${mapped && mapped.group === "hra" ? t("receipts.hraExemptionLabel") : mapped && mapped.label ? mapped.label : t("common.notCounted")}</td><td class="r num" data-label="${escAttr(t("receipts.tableAmount"))}">${inr(r.amount)}<div class="meta">${savingTableText(r)}</div></td><td data-label="${escAttr(t("receipts.tableState"))}">${flagged ? chip("check", t("receipts.doubleCheckChip")) : chip("done", t("receipts.savedChip"))}</td></tr>`;
   }).join("");
 
   return headBar(t("receipts.headerTitle")) + detectBanner + `
@@ -1683,10 +1756,10 @@ function renderReportView() {
   ${DISC}</div>`;
 }
 
-// ---------- PDF export (jsPDF + jspdf-autotable, loaded from cdnjs on demand) ----------
+// ---------- PDF export (jsPDF + jspdf-autotable, vendored in vendor/, loaded on demand) ----------
 const PDF_LIB_URLS = {
-  jspdf: "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js",
-  autotable: "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js",
+  jspdf: "vendor/jspdf.umd.min.js?v=" + (window.__TP_V || "v"), // jsPDF 4.2.1 (MIT), vendored so PDFs work offline
+  autotable: "vendor/jspdf.plugin.autotable.min.js?v=" + (window.__TP_V || "v"), // jspdf-autotable 5.0.8 (MIT)
 };
 function loadScriptOnce(src) {
   return new Promise((resolve, reject) => {
@@ -1845,7 +1918,7 @@ async function exportEmployerProofPack() {
 // Family profiles (task 7) -- managed from Settings since they're profile
 // data, like onboarding answers, not something tied to any one receipt.
 function familyMembersSection() {
-  const rows = STATE.familyMembers.map((m) => `<div class="row"><div><span class="lbl">${escAttr(m.name)}</span><p class="help">${m.relation === "Parent" ? t("settings.familyRelationParent") : t("settings.familyRelationChild")}</p></div><div><button type="button" class="btn ghost" data-act="remove-family-member" data-id="${m.id}">${t("settings.familyRemove")}</button></div></div>`).join("");
+  const rows = STATE.familyMembers.map((m) => `<div class="row"><div><span class="lbl">${esc(m.name)}</span><p class="help">${m.relation === "Parent" ? t("settings.familyRelationParent") : t("settings.familyRelationChild")}</p></div><div><button type="button" class="btn ghost" data-act="remove-family-member" data-id="${m.id}">${t("settings.familyRemove")}</button></div></div>`).join("");
   return `<section class="group" id="s-family"><header><h2>${t("settings.familyHeader")}</h2><p>${t("settings.familySub")}</p></header>
     ${rows || `<p class="meta">${t("settings.familyNone")}</p>`}
     <div class="row">

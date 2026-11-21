@@ -189,6 +189,7 @@
       "backupStarted": "Backup download started",
       "restored": "Backup restored.",
       "badFile": "That file is not a TaxPlot backup.",
+      "restoredSkipped": "{{n}} item(s) in the file could not be read and were left out.",
       "saveFailed": "Could not save on this device — storage may be full. Export a backup now.",
       "nearlyFull": "Device storage for TaxPlot is nearly full. Export a backup and remove old photos.",
       "notPersisted": "Your browser may clear TaxPlot data when space is low or the app is unused for a while. Keep a backup; adding the app to your home screen may help."
@@ -1018,6 +1019,7 @@
       "errTooMany": "More than {{n}} rows. Split the file.",
       "errHeader": "Missing required column: {{cols}}.",
       "errRead": "Could not read this file.",
+      "errEncoding": "This file is not saved as UTF-8, so names could be garbled. In Excel use Save As, then CSV UTF-8, and choose it again.",
       "errName": "Client name is missing",
       "errPan": "PAN is not in the format 5 letters, 4 digits, 1 letter",
       "errPanDup": "PAN appears more than once in this file",
@@ -1104,6 +1106,8 @@
       "statusAria": "Status for the notice from {{name}}"
     },
     "cstatus": {
+      "csvBtn": "Download CSV",
+      "csvNote": "Stages and messages are the CA's own entries. Nothing here says a return has been filed.",
       "title": "Client status",
       "demo": "Demo preview — sample data",
       "sub": "Show each client where their file stands, in plain words. You set the stage and the message yourself; nothing here is sent to anyone and TaxPlot does not file or submit anything.",
@@ -1149,6 +1153,7 @@
     },
     "yreview": {
       "button": "Year in review (PDF)",
+      "caNote": "Note for the CA: every figure here is an informational estimate. Ticks, stages and notes are your own marks and are not verified by TaxPlot. This summary makes no claim that any return has been filed or accepted.",
       "title": "Year in review — {{name}} — {{fy}}",
       "generated": "Generated {{time}} by {{who}}",
       "intro": "A summary of the work recorded in this workspace for the year. Every figure is an informational estimate or a count from the review record, not tax advice and not a filed return.",
@@ -1237,6 +1242,9 @@
     },
     "plan": {
       "title": "Annual plan tracker",
+      "csvBtn": "Download CSV",
+      "csvNote": "Dates are as on record in TaxPlot and are to be confirmed on the official portal. Ticks are the CA's own marks.",
+      "tbc": "To be confirmed",
       "sub": "The year's milestones for one client. Tick a row when you have marked it done yourself. TaxPlot makes no payment, files nothing and ticks nothing on its own. The rows are a general list: you decide which ones apply to this client.",
       "sample": "Sample data",
       "note": "CA-entered record. Dates are as on record in TaxPlot's settings and must be confirmed on the official portal. Not tax advice.",

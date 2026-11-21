@@ -170,7 +170,7 @@ function caReviewLoad() {
   const states = ["approve", "query", "reject"];
   (Array.isArray(o.q) ? o.q : []).forEach((p) => { const q = Array.isArray(p) && Q.find((x) => x.id === p[0]); if (q && states.includes(p[1])) q.state = p[1]; });
   (Array.isArray(o.audit) ? o.audit : []).forEach((a) => {
-    if (a && Number.isInteger(a.c) && states.includes(a.type) && Number.isFinite(a.at)) AUDIT.push({ c: a.c, type: a.type, user: String(a.user || "").slice(0, 60), at: a.at, reason: String(a.reason || "").slice(0, 500), what: String(a.what || "").slice(0, 200), sec: String(a.sec || "").slice(0, 10), flag: String(a.flag || "").slice(0, 300) });
+    if (a && Number.isInteger(a.c) && states.includes(a.type) && Number.isFinite(a.at)) AUDIT.push({ c: a.c, type: a.type, user: String(a.user || "").slice(0, 60), at: a.at, reason: String(a.reason || "").slice(0, 500), what: String(a.what || "").slice(0, 200), sec: Object.prototype.hasOwnProperty.call(OLD_SEC_NO, a.sec) || a.sec === "HRA" ? String(a.sec) : "", flag: String(a.flag || "").slice(0, 300) });
   });
 }
 function caDocsSave() { try { localStorage.setItem(CA_DOCS_KEY, JSON.stringify(caDocsGot)); } catch (e) {} }
@@ -233,6 +233,7 @@ function caPan(p) { /* one format everywhere: XXXXXX + last 4. Imported PANs are
 const OLD_SEC_NO = { 123: "80C", 124: "80CCD(1B)", 126: "80D", 22: "24(b)", 133: "80G" };
 function caSec(n) {
   if (n === "HRA") return "HRA";
+  if (!Object.prototype.hasOwnProperty.call(OLD_SEC_NO, n)) return caEsc(n); // restored/unknown value: never raw HTML
   const base = CS.sectionOrder === "old" ? `${OLD_SEC_NO[n]} (Sec ${n})` : `Sec ${n} (${OLD_SEC_NO[n]})`;
   return CS.plainWords ? `${base} — ${t("secPlain." + n)}` : base;
 }
@@ -355,12 +356,18 @@ function buildSeasonReportData(now = Date.now()) {
     footer: t("season.footer"), filename: "TaxPlot_Season_Readiness_" + TaxEngine.FY_LABEL.replace(/[^0-9A-Za-z]+/g, "-") + ".",
   };
 }
-function caCsvCell(v) { let s = String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function caCsvCell(v) { let s = String(v); if (/^[=+\-@\t\r]/.test(s) && !/^-\d+(\.\d+)?$/.test(s)) s = "'" + s; return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 function caSeasonCsv(data) { return [[data.title], [data.generated], [data.summary], [], data.head, ...data.body, [], [data.footer]].map((r) => r.map(caCsvCell).join(",")).join("\r\n") + "\r\n"; }
 function caExportSeasonCsv() {
   const data = buildSeasonReportData();
   const url = URL.createObjectURL(new Blob(["﻿" + caSeasonCsv(data)], { type: "text/csv;charset=utf-8" }));
   const a = document.createElement("a"); a.href = url; a.download = data.filename + "csv"; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000); caToast(t("season.csvDone"));
+}
+function caDownloadCsv(rows, filename) {
+  const text = rows.map((r) => r.map(caCsvCell).join(",")).join("\r\n") + "\r\n";
+  const url = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000); caToast(t("season.csvDone"));
 }
 async function caExportSeasonPdf() {
@@ -518,8 +525,8 @@ function caActivity(clientId, max) {
 // ---------- Evidence pack (9.6): per-client PDF, one block per section ----------
 // Lists what was logged (sample data has totals, not receipt images). Not a tax computation.
 const CA_PDF_LIBS = {
-  jspdf: "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js",
-  autotable: "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js",
+  jspdf: "vendor/jspdf.umd.min.js?v=" + (window.__TP_V || "v"), // vendored (MIT), works offline
+  autotable: "vendor/jspdf.plugin.autotable.min.js?v=" + (window.__TP_V || "v"),
 };
 function caEvSecName(n) { return `Section ${n} (${OLD_SEC_NO[n]})`; }
 // `only` (optional): an evidence key such as "s126self" limits the pack to that one section (used by the notice register).
@@ -696,7 +703,8 @@ function caImportTemplateText() {
   const cols = CA_IMPORT_CONFIG.columns;
   return cols.map((c) => c[1][0]).join(",") + "\n" + CA_IMPORT_CONFIG.example.map(caCsvCell).join(",") + "\n";
 }
-function caCleanName(n) { return String(n == null ? "" : n).replace(/[<>"&`\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 60); }
+function caCutName(s) { return Array.from(s).slice(0, 60).join(""); }
+function caCleanName(n) { return caCutName(String(n == null ? "" : n).replace(/[<>"`\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim()); }
 function caImportParse(text) {
   const cfg = CA_IMPORT_CONFIG, recs = caParseCsv(text);
   if (!recs.length) return { fileError: t("import.errEmpty"), rows: [] };
@@ -712,7 +720,7 @@ function caImportParse(text) {
   body.forEach(({ line, cells }) => {
     const g = (k) => (idx[k] === undefined ? "" : String(cells[idx[k]] == null ? "" : cells[idx[k]]).trim());
     const errors = [], warns = [], rawName = g("name"), name = caCleanName(rawName);
-    if (!name) errors.push(t("import.errName")); else if (name !== rawName.replace(/\s+/g, " ").trim().slice(0, 60)) warns.push(t("import.warnName"));
+    if (!name) errors.push(t("import.errName")); else if (name !== caCutName(rawName.replace(/\s+/g, " ").trim())) warns.push(t("import.warnName"));
     const pan = g("pan").toUpperCase().replace(/\s+/g, ""), panOk = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
     if (!panOk) errors.push(t("import.errPan")); else if (seen.has(pan)) errors.push(t("import.errPanDup")); else seen.add(pan);
     const last4 = panOk ? pan.slice(-4) : "";
@@ -756,7 +764,11 @@ function caImportFile(file) {
   if (file.size > max) { caImp = null; caImpErr = t("import.errTooBig", { mb: Math.round(max / 1048576) }); return caRender(); }
   if (!/\.csv$/i.test(file.name || "")) { caImp = null; caImpErr = t("import.errNotCsv"); return caRender(); }
   const done = (txt) => caImportLoadText(txt), fail = () => { caImp = null; caImpErr = t("import.errRead"); caRender(); };
-  if (file.text) file.text().then(done, fail);
+  const badEnc = () => { caImp = null; caImpErr = t("import.errEncoding"); caRender(); };
+  // Decode strictly: a file that is not UTF-8 (for example Excel's plain "CSV") would silently turn names into replacement characters.
+  const decode = (buf) => { let txt; try { txt = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch (e) { return badEnc(); } done(txt); };
+  if (file.arrayBuffer && typeof TextDecoder !== "undefined") file.arrayBuffer().then(decode, fail);
+  else if (file.text) file.text().then(done, fail);
   else { const r = new FileReader(); r.onload = () => done(String(r.result)); r.onerror = fail; r.readAsText(file); }
 }
 function caImportCommit() {
@@ -944,10 +956,14 @@ function caStatusView() {
     const acts = `<button class="btn ghost sm" type="button" data-st-view="${c.id}">${t("cstatus.viewBtn")}</button><button class="btn ghost sm" type="button" data-yreview="${c.id}">${ic("down")}${t("yreview.button")}</button>`;
     return { c, sel, note, acts };
   });
-  return `<div class="cs-admin"><div class="ph"><h1>${t("cstatus.title")}</h1><span class="pill">${t("cstatus.demo")}</span></div><p class="muted" style="font-size:.86rem">${t("cstatus.sub")}</p>
+  return `<div class="cs-admin"><div class="ph"><h1>${t("cstatus.title")}</h1><span class="pill">${t("cstatus.demo")}</span></div><p class="muted" style="font-size:.86rem">${t("cstatus.sub")}</p><p class="cs-noprint"><button class="btn ghost" type="button" data-st-csv="1">${ic("down")}${t("cstatus.csvBtn")}</button></p>
   <div class="grid" role="region" aria-label="${t("cstatus.title")}" style="max-height:none"><table><thead><tr><th>${t("cstatus.colClient")}</th><th>${t("cstatus.colStage")}</th><th>${t("cstatus.colMessage")}</th><th>${t("cstatus.colAction")}</th></tr></thead><tbody>${rows.map((r) => `<tr data-st-row="${r.c.id}"><td class="cname">${caEsc(r.c.name)}</td><td>${r.sel}</td><td>${r.note}</td><td><div style="display:flex;gap:.3rem;flex-wrap:wrap">${r.acts}</div></td></tr>`).join("")}</tbody></table></div>
   <div class="cards" role="list" aria-label="${t("cstatus.title")}">${rows.map((r) => `<article class="ccard" role="listitem" data-st-row="${r.c.id}"><div class="h"><b>${caEsc(r.c.name)}</b></div><span>${r.sel}</span><span>${r.note}</span><div style="display:flex;gap:.3rem;flex-wrap:wrap">${r.acts}</div></article>`).join("")}</div>
   <p class="muted" style="font-size:.78rem">${t("cstatus.sampleNote")}</p></div>${vc ? caStatClientView(vc) : ""}${CA_DISC}`;
+}
+function caStatusCsvRows() {
+  const rows = C.map((c) => { const st = caStatOf(c); return [c.name, t("cstatus.stage." + st.stage), st.note]; });
+  return [[t("cstatus.title") + " — " + TaxEngine.FY_LABEL], [t("cstatus.csvNote")], [], [t("cstatus.colClient"), t("cstatus.colStage"), t("cstatus.colMessage")], ...rows, [], [t("cstatus.footer")]];
 }
 // Year in review: counts from AUDIT + engine figures. PAN last 4 only.
 function caMaskPan4(p) { return "XXXXXX" + String(p).replace(/[^A-Za-z0-9]/g, "").slice(-4); }
@@ -966,7 +982,7 @@ function buildYearReviewData(c, now = Date.now()) {
   const room = oldBetter ? caRoomSecs().map((s) => [caRoomName(s), "Rs. " + Math.round(c[s.key]).toLocaleString("en-IN"), "Rs. " + Math.round(s.cap).toLocaleString("en-IN"), "Rs. " + Math.round(Math.max(0, s.cap - c[s.key])).toLocaleString("en-IN")]) : [];
   return {
     title: t("yreview.title", { name: c.name, fy: TaxEngine.FY_LABEL }), generated: t("yreview.generated", { time: fmt(now), who: CA_USER }),
-    demo: c.imported ? "" : t("yreview.demo"), pan: t("yreview.pan", { pan: caMaskPan4(c.pan) }), intro: t("yreview.intro"),
+    demo: c.imported ? "" : t("yreview.demo"), pan: t("yreview.pan", { pan: caMaskPan4(c.pan) }), intro: t("yreview.intro"), caNote: t("yreview.caNote"),
     counts, deadlines: [t("yreview.returnDue", { form: r.form, date: r.date }), nt.length ? t("yreview.noticesMet", { done: ntDone, total: nt.length }) : t("yreview.noticesNone")],
     flags, flagsNone: t("yreview.flagsNone"), room, roomNone: t("yreview.roomNewRegime"), roomNote: t("yreview.roomNote"), footer: t("yreview.footer"),
     filename: "TaxPlot_Year_In_Review_" + c.name.replace(/\W+/g, "_") + ".pdf",
@@ -982,7 +998,7 @@ async function caExportYearReview(id) {
     let y = 50; const para = (txt) => { const w = doc.splitTextToSize(txt, 515); if (y + w.length * 12 > 780) { doc.addPage(); y = 50; } doc.text(w, 40, y); y += w.length * 12 + 2; };
     const head = (txt) => { y += 8; if (y > 760) { doc.addPage(); y = 50; } doc.setFont(undefined, "bold"); doc.text(txt, 40, y); doc.setFont(undefined, "normal"); y += 14; };
     doc.setFontSize(16); doc.setFont(undefined, "bold"); doc.text(data.title, 40, y); y += 20;
-    doc.setFontSize(9); doc.setFont(undefined, "normal"); para(data.generated); para(data.pan); if (data.demo) para(data.demo); y += 4; para(data.intro);
+    doc.setFontSize(9); doc.setFont(undefined, "normal"); para(data.generated); para(data.pan); if (data.demo) para(data.demo); y += 4; para(data.intro); para(data.caNote);
     head(t("yreview.headerCounts"));
     doc.autoTable({ startY: y, margin: { left: 40, right: 40 }, head: [[t("yreview.colItem"), t("yreview.colValue")]], body: data.counts, theme: "grid", styles: { fontSize: 8 }, headStyles: { fillColor: [40, 40, 40] } }); y = doc.lastAutoTable.finalY + 8;
     head(t("yreview.deadlinesHeader")); data.deadlines.forEach(para);
@@ -1026,20 +1042,25 @@ function caPlanView() {
   const body = rows.map((d) => {
     const on = !!mine[d.key], passed = caDays(d) < 0;
     const tick = `<input type="checkbox" class="chk" data-plan-tick="${c.id}:${d.key}"${on ? " checked" : ""} aria-label="${caEsc(t("plan.tickAria", { what: d.label }))}">`;
-    const dt = `<span class="num">${caPlanFmt(d.date)}</span>${passed ? ` <span class="pill">${t("plan.datePassed")}</span>` : ""}`;
+    const dt = `<span class="num">${caPlanFmt(d.date)}</span>${d.verify ? ` <span class="pill">${t("plan.tbc")}</span>` : ""}${passed ? ` <span class="pill">${t("plan.datePassed")}</span>` : ""}`;
     return { tick, d, dt, who: caPlanWho(d), mark: on ? t("plan.markedOn", { date: caPlanFmt(mine[d.key]) }) : t("plan.notMarked") };
   });
   const opts = C.map((x) => `<option value="${x.id}"${x.id === c.id ? " selected" : ""}>${caEsc(x.name)}</option>`).join("");
   return `<section class="cs-print" data-plan-view="${c.id}"><div class="ph"><h1>${t("plan.title")}</h1><span class="pill">${t("plan.sample")}</span></div>
   <p class="muted cs-noprint" style="font-size:.86rem">${t("plan.sub")}</p>
   <h2 class="print-only-title" style="font-size:1rem;margin:.2rem 0">${t("plan.printTitle", { name: caEsc(c.name), fy: TaxEngine.FY_LABEL })} · ${t("plan.printPan", { pan: caMaskPan4(c.pan) })}</h2>
-  <div class="cs-noprint" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.5rem 0"><label for="plan-client" class="muted">${t("plan.clientLabel")}</label><select class="sel" id="plan-client" data-plan-client="1">${opts}</select><button class="btn" type="button" data-plan-print="${c.id}">${ic("down")}${t("plan.printBtn")}</button></div>
+  <div class="cs-noprint" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.5rem 0"><label for="plan-client" class="muted">${t("plan.clientLabel")}</label><select class="sel" id="plan-client" data-plan-client="1">${opts}</select><button class="btn" type="button" data-plan-print="${c.id}">${ic("down")}${t("plan.printBtn")}</button><button class="btn ghost" type="button" data-plan-csv="${c.id}">${ic("down")}${t("plan.csvBtn")}</button></div>
   <p class="muted" style="font-size:.86rem"><b>${t("plan.kpi", { done, total: rows.length })}</b></p>
   <div class="grid" style="max-height:none"><table><thead><tr><th>${t("plan.colDone")}</th><th>${t("plan.colMilestone")}</th><th>${t("plan.colDate")}</th><th>${t("plan.colMarked")}</th></tr></thead><tbody>${body.map((r) => `<tr data-plan-row="${r.d.key}"><td>${r.tick}</td><td><b>${r.d.label}</b><div class="muted" style="font-size:.8rem">${r.who}</div></td><td>${r.dt}</td><td>${r.mark}</td></tr>`).join("")}</tbody></table></div>
   <div class="cards" role="list" aria-label="${t("plan.title")}">${body.map((r) => `<article class="ccard" role="listitem"><div class="h"><b>${r.d.label}</b>${r.tick}</div><span class="muted sub">${r.who}</span><span class="num">${r.dt}</span><span class="muted sub">${r.mark}</span></article>`).join("")}</div>
   <p class="muted" style="font-size:.8rem">${t("plan.dateOnRecord")}</p>
   <h3 style="font-size:.95rem">${t("plan.tbcHeader")}</h3><ul class="muted" style="font-size:.84rem"><li>${t("plan.tbcRevised")}</li><li>${t("plan.tbcRent", { secNew: rc.sectionNew, secOld: rc.sectionOld, formNew: rc.formNew, formOld: rc.formOld })}</li><li>${t("plan.tbcOther")}</li></ul>
   <p class="muted" style="font-size:.8rem">${t("plan.note")}</p><p class="muted" style="font-size:.8rem">${t("plan.footer")}</p></section>`;
+}
+function caPlanCsvRows(c) {
+  const mine = caPlan[c.id] || {};
+  return [[t("plan.printTitle", { name: c.name, fy: TaxEngine.FY_LABEL })], [t("plan.csvNote")], [], [t("plan.colMilestone"), t("plan.colDate"), t("plan.tbc"), t("plan.colMarked")],
+    ...caPlanRows(c).map((d) => [d.label, d.date, d.verify ? t("plan.tbc") : "", mine[d.key] ? t("plan.markedOn", { date: caPlanFmt(mine[d.key]) }) : t("plan.notMarked")]), [], [t("plan.footer")]];
 }
 function caPlanPrint() { document.body.classList.add("print-plan"); const done = () => document.body.classList.remove("print-plan"); window.addEventListener("afterprint", done, { once: true }); try { window.print(); } catch (e) { done(); } }
 
@@ -1054,7 +1075,7 @@ function caRender() {
   if (ae && ae.dataset && ae.dataset.q !== undefined) { const row = ae.closest("[data-qrow]"); if (row) { const sibs = [...row.parentNode.children].filter((x) => x.hasAttribute("data-qrow")); qHint = { tag: row.tagName.toLowerCase(), i: sibs.indexOf(row) }; } }
   if (ae && ae.dataset && ae.dataset.delClient !== undefined) delHint = true;
   if (ae && ae.dataset) {
-    for (const k of ["invStep", "qall", "room", "bulk", "rulewin", "season", "imp", "ntcAdd", "ntcDel", "ntcStatus", "evnotice", "stStage", "stNote", "stView", "stPrint", "planTick", "docTick", "delClient", "dat", "planClient", "planPrint", "yreview", "filt", "sort", "go", "set", "toggle"]) {
+    for (const k of ["invStep", "qall", "room", "bulk", "rulewin", "season", "imp", "ntcAdd", "ntcDel", "ntcStatus", "evnotice", "stStage", "stNote", "stView", "stPrint", "planTick", "docTick", "delClient", "dat", "planClient", "planPrint", "planCsv", "stCsv", "yreview", "filt", "sort", "go", "set", "toggle"]) {
       if (ae.dataset[k] !== undefined) { focusSel = `[data-${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}="${ae.dataset[k]}"]` + (k === "set" ? `[data-val="${ae.dataset.val}"]` : ""); focusIdx = [...document.querySelectorAll(focusSel)].indexOf(ae); break; }
     }
   }
@@ -1100,6 +1121,8 @@ document.addEventListener("click", (e) => {
   const sv = e.target.closest("[data-st-view]"); if (sv) { caStatView = +sv.dataset.stView; caRender(); return; }
   if (e.target.closest("[data-st-print]")) { caStatPrint(); return; }
   if (e.target.closest("[data-plan-print]")) { caPlanPrint(); return; }
+  const pcv = e.target.closest("[data-plan-csv]"); if (pcv) { const c = C.find((x) => x.id === +pcv.dataset.planCsv); if (c) caDownloadCsv(caPlanCsvRows(c), "TaxPlot_Annual_Plan_" + c.name.replace(/\W+/g, "_") + ".csv"); return; }
+  if (e.target.closest("[data-st-csv]")) { caDownloadCsv(caStatusCsvRows(), "TaxPlot_Client_Status.csv"); return; }
   const dl = e.target.closest("[data-del-client]"); if (dl) { const id = +dl.dataset.delClient; if (caDelConfirm !== id) { caDelConfirm = id; caRender(); } else caDeleteClient(id); return; }
   const da = e.target.closest("[data-dat]"); if (da) { const a = da.dataset.dat; if (a === "backup") caBackupDownload(); else if (a === "clear") { if (!caClearConfirm) { caClearConfirm = true; caRender(); } else caClearAllData(); } return; }
   const dt = e.target.closest("[data-doc-tick]"); if (dt) { const [did, dk] = dt.dataset.docTick.split(":"); caDocsToggle(+did, dk); caRender(); return; }
